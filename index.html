@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collage Maker</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Left Column: Upload Section -->
+        <div class="left-column">
+            <section class="upload-section">
+                <div class="drop-zone" id="dropZone">
+                    <p>Drag & drop or click to upload up to 3 images</p>
+                    <input type="file" id="imageInput" accept="image/*" multiple style="display: none">
+                </div>
+                <div class="uploaded-images" id="uploadedImages"></div>
+            </section>
+        </div>
+
+        <!-- Center Column: Collage Section -->
+        <div class="center-column">
+            <section class="collage-section" id="collageSection" style="display: none;">
+                <div class="preview-area">
+                    <div class="preview-container">
+                        <img id="mainPreview" src="" alt="Main Collage">
+                    </div>
+                    <div class="zoom-controls">
+                        <button class="zoom-icon-btn" id="zoomOutBtn"><i class="fas fa-search-minus"></i></button>
+                        <select id="zoomSelect" class="zoom-select">
+                            <option value="50">50%</option>
+                            <option value="100" selected>100%</option>
+                            <option value="150">150%</option>
+                            <option value="200">200%</option>
+                        </select>
+                        <button class="zoom-icon-btn" id="zoomInBtn"><i class="fas fa-search-plus"></i></button>
+                    </div>
+                </div>
+                <div class="layout-area">
+                    <div class="layout-options" id="layoutOptions">
+                        <!-- Layout options will be added here dynamically -->
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Right Column: Customization -->
+        <div class="right-column">
+            <section class="customize-section">
+                <div class="customize-controls">
+                    <div class="control-group">
+                        <label for="aspectRatio">Ratio / Size</label>
+                        <div class="aspect-ratio-options">
+                            <button class="aspect-ratio-btn active" data-ratio="1:1">1:1</button>
+                            <button class="aspect-ratio-btn" data-ratio="4:3">4:3</button>
+                            <button class="aspect-ratio-btn" data-ratio="3:2">3:2</button>
+                            <button class="aspect-ratio-btn" data-ratio="16:9">16:9</button>
+                        </div>
+                        <div class="social-media-options">
+                            <button class="social-media-btn" data-platform="x">X</button>
+                            <button class="social-media-btn" data-platform="instagram">Instagram</button>
+                            <button class="social-media-btn" data-platform="threads">Threads</button>
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <label for="padding">Canvas Padding</label>
+                        <div class="slider-with-number">
+                            <input type="range" id="padding" min="0" max="50" value="10">
+                            <input type="number" id="paddingNumber" min="0" max="50" value="10">
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <label for="gap">Photo Spacing</label>
+                        <div class="slider-with-number">
+                            <input type="range" id="gap" min="0" max="50" value="10">
+                            <input type="number" id="gapNumber" min="0" max="50" value="10">
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <label for="cornerRadius">Round Corners</label>
+                        <div class="slider-with-number">
+                            <input type="range" id="cornerRadius" min="0" max="50" value="0">
+                            <input type="number" id="cornerRadiusNumber" min="0" max="50" value="0">
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <label for="bgColor">Background Color</label>
+                        <div class="color-picker">
+                            <button id="colorPickerBtn" class="color-picker-btn">
+                                <span class="color-preview" style="background-color: #ffffff;"></span>
+                            </button>
+                            <input type="color" id="bgColor" value="#ffffff" style="display: none;">
+                            <div class="color-presets">
+                                <button class="color-preset active" style="background-color: #ffffff;" data-color="#ffffff"></button>
+                                <button class="color-preset" style="background-color: #000000;" data-color="#000000"></button>
+                                <button class="color-preset" style="background-color: #EEEEEE;" data-color="#EEEEEE"></button>
+                                <button class="color-preset" style="background-color: #CCCCCD;" data-color="#CCCCCD"></button>
+                                <button class="color-preset" style="background-color: #555556;" data-color="#555556"></button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="action-buttons">
+                        <button id="resetCollage">Clear</button>
+                        <button id="downloadCollage">Download</button>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- モーダルウィンドウ -->
+    <div id="sizeModal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn">&times;</span>
+            <h3 id="modalTitle">SNS画像サイズを選択</h3>
+            <div id="modalOptions" class="modal-options">
+                <!-- ここに動的にオプションが追加されます -->
+            </div>
+        </div>
+    </div>
+
+    <script src="renderer.js"></script>
+</body>
+</html>
