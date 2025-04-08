@@ -260,7 +260,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ファイル処理
     function handleFiles(files) {
         if (images.length + files.length > 3) {
-            alert('最大3枚までアップロードできます');
+            alert('You can upload up to 3 images.');
             return;
         }
 
