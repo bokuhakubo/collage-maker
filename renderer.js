@@ -511,7 +511,7 @@ document.addEventListener('DOMContentLoaded', () => {
             mainPreview.style.cursor = 'grabbing';
             
             // ドラッグ中のメッセージを表示
-            showToast('画像をドラッグしています。別の画像の位置にドロップして入れ替えることができます。');
+            showToast('You are dragging an image. You can drop it to swap positions with another image.');
         }
     }
 
@@ -559,7 +559,7 @@ document.addEventListener('DOMContentLoaded', () => {
             updateCollage();
             
             // 完了メッセージ
-            showToast('画像を入れ替えました');
+            showToast('Image has been swapped.');
         }
         
         // リセット処理
