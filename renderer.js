@@ -41,11 +41,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let originalWidth = 0;
     let originalHeight = 0;
 
-    // ドラッグ＆ドロップ関連の変数
-    let isDragging = false;
-    let draggedImageIndex = -1;
-    let dragOverImageIndex = -1;
-    let dragFeedbackElement = null;
+    // 画像入れ替え関連の変数
+    let selectedImageIndex = -1; // 選択中の画像インデックス
+    let isSwapMode = false; // 入れ替えモード状態フラグ
+    let swapIconElement = null; // 入れ替えアイコン要素
+    let highlightElement = null; // 選択中の画像ハイライト要素
 
     // SNSサイズのデータ
     const snsSizes = {
@@ -469,23 +469,27 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // ドラッグ＆ドロップ機能を初期化
-        initDragAndDrop();
+        // 画像入れ替え機能を初期化
+        initImageSwapFeature();
     }
 
-    // ドラッグ＆ドロップの初期化
-    function initDragAndDrop() {
+    // 画像入れ替え機能の初期化
+    function initImageSwapFeature() {
         if (images.length < 2) return; // 画像が2枚以上ある場合のみ有効化
 
         // 既にイベントリスナーがある場合は一度削除（再初期化を防ぐため）
-        mainPreview.removeEventListener('mousedown', handleMouseDown);
+        mainPreview.removeEventListener('click', handleImageClick);
+        document.removeEventListener('click', handleOutsideClick);
         
-        // マウスダウンイベントの追加
-        mainPreview.addEventListener('mousedown', handleMouseDown);
+        // クリックイベントの追加
+        mainPreview.addEventListener('click', handleImageClick);
+        
+        // プレビューエリア外のクリックを検知して選択解除
+        document.addEventListener('click', handleOutsideClick);
     }
 
-    // マウスダウンイベントハンドラ
-    function handleMouseDown(e) {
+    // 画像クリックイベントハンドラ
+    function handleImageClick(e) {
         if (images.length < 2 || currentLayout.type === 'single') return;
 
         const rect = mainPreview.getBoundingClientRect();
@@ -496,85 +500,482 @@ document.addEventListener('DOMContentLoaded', () => {
         const imageIndex = getImageIndexAtPosition(x, y);
         
         if (imageIndex !== -1) {
-            e.preventDefault();
-            isDragging = true;
-            draggedImageIndex = imageIndex;
+            e.stopPropagation(); // イベントの伝播を停止
             
-            // ドラッグ中のフィードバック要素を作成
-            createDragFeedback(e.clientX, e.clientY, imageIndex);
-            
-            // マウスムーブとマウスアップのイベントリスナーを追加
-            document.addEventListener('mousemove', handleMouseMove);
-            document.addEventListener('mouseup', handleMouseUp);
-            
-            // カーソルスタイルを変更
-            mainPreview.style.cursor = 'grabbing';
-            
-            // ドラッグ中のメッセージを表示
-            showToast('You are dragging an image. You can drop it to swap positions with another image.');
-        }
-    }
-
-    // マウスムーブイベントハンドラ
-    function handleMouseMove(e) {
-        if (!isDragging) return;
-        
-        // ドラッグフィードバックの位置を更新
-        updateDragFeedbackPosition(e.clientX, e.clientY);
-        
-        // マウスがプレビュー内にあるか確認
-        const rect = mainPreview.getBoundingClientRect();
-        if (e.clientX >= rect.left && e.clientX <= rect.right && 
-            e.clientY >= rect.top && e.clientY <= rect.bottom) {
-            
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-            
-            // ドロップ先の画像を特定
-            const imageIndex = getImageIndexAtPosition(x, y);
-            
-            if (imageIndex !== -1 && imageIndex !== draggedImageIndex) {
-                dragOverImageIndex = imageIndex;
-                highlightDropTarget(imageIndex);
+            if (isSwapMode) {
+                // すでに別の画像が選択されている場合、入れ替えを実行
+                if (selectedImageIndex !== -1 && selectedImageIndex !== imageIndex) {
+                    // 画像を入れ替え
+                    swapImages(selectedImageIndex, imageIndex);
+                    
+                    // コラージュを更新
+                    updateCollage();
+                    
+                    // 完了メッセージ
+                    showToast('Images have been swapped.');
+                }
+                
+                // 選択状態をリセット
+                resetSelection();
             } else {
-                dragOverImageIndex = -1;
-                removeDropHighlight();
+                // 新しく画像を選択
+                selectedImageIndex = imageIndex;
+                
+                // 選択された画像をハイライト表示
+                highlightSelectedImage(imageIndex);
+                
+                // 入れ替えアイコンを表示
+                showSwapIcon(imageIndex);
+                
+                // 入れ替えモードはまだアクティブにしない（アイコンクリック時に有効化）
+                isSwapMode = false;
             }
-        } else {
-            dragOverImageIndex = -1;
-            removeDropHighlight();
         }
     }
-
-    // マウスアップイベントハンドラ
-    function handleMouseUp(e) {
-        if (!isDragging) return;
-        
-        // ドラッグ終了処理
-        if (draggedImageIndex !== -1 && dragOverImageIndex !== -1) {
-            // 画像を入れ替え
-            swapImages(draggedImageIndex, dragOverImageIndex);
-            
-            // コラージュを更新
-            updateCollage();
-            
-            // 完了メッセージ
-            showToast('Image has been swapped.');
+    
+    // プレビューエリア外のクリックを処理
+    function handleOutsideClick(e) {
+        // mainPreviewまたはswapIconElement上のクリックは無視
+        if (mainPreview.contains(e.target) || (swapIconElement && swapIconElement.contains(e.target))) {
+            return;
         }
         
-        // リセット処理
-        isDragging = false;
-        draggedImageIndex = -1;
-        dragOverImageIndex = -1;
-        removeDragFeedback();
-        removeDropHighlight();
+        // 選択状態をリセット
+        resetSelection();
+    }
+    
+    // 選択状態のリセット
+    function resetSelection() {
+        selectedImageIndex = -1;
+        isSwapMode = false;
+        removeSwapIcon();
+        removeHighlight();
+    }
+    
+    // 選択画像のハイライト表示
+    function highlightSelectedImage(imageIndex) {
+        // 既存のハイライトを削除
+        removeHighlight();
         
-        // イベントリスナーを削除
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
+        // プレビュー要素の親要素にposition: relativeを設定
+        const previewContainer = mainPreview.parentElement;
+        const originalPosition = getComputedStyle(previewContainer).position;
+        if (originalPosition === 'static') {
+            previewContainer.style.position = 'relative';
+        }
         
-        // カーソルスタイルを元に戻す
-        mainPreview.style.cursor = 'pointer';
+        // メインプレビューの位置を取得
+        const previewRect = mainPreview.getBoundingClientRect();
+        const containerRect = previewContainer.getBoundingClientRect();
+        
+        // プレビュー画像の相対位置を計算
+        const previewOffsetX = previewRect.left - containerRect.left;
+        const previewOffsetY = previewRect.top - containerRect.top;
+        
+        const padding = parseInt(paddingControl.value);
+        const gap = parseInt(gapControl.value);
+        
+        const availableWidth = mainPreview.width - (padding * 2);
+        const availableHeight = mainPreview.height - (padding * 2);
+        
+        let highlightX, highlightY, highlightWidth, highlightHeight;
+        
+        // レイアウトタイプに応じたハイライト位置の計算
+        if (currentLayout.type === 'vertical-2' || currentLayout.type === 'vertical-3') {
+            const count = currentLayout.positions.length;
+            const imgHeight = (availableHeight - ((count - 1) * gap)) / count;
+            
+            highlightX = previewOffsetX + padding;
+            highlightY = previewOffsetY + padding + (imageIndex * (imgHeight + gap));
+            highlightWidth = availableWidth;
+            highlightHeight = imgHeight;
+        } else if (currentLayout.type === 'horizontal-2' || currentLayout.type === 'horizontal-3') {
+            const count = currentLayout.positions.length;
+            const imgWidth = (availableWidth - ((count - 1) * gap)) / count;
+            
+            highlightX = previewOffsetX + padding + (imageIndex * (imgWidth + gap));
+            highlightY = previewOffsetY + padding;
+            highlightWidth = imgWidth;
+            highlightHeight = availableHeight;
+        } else {
+            // 複合レイアウト
+            if (currentLayout.type === '1-top-2-bottom') {
+                if (imageIndex === 0) {
+                    // 上部の画像
+                    highlightX = previewOffsetX + padding;
+                    highlightY = previewOffsetY + padding;
+                    highlightWidth = availableWidth;
+                    highlightHeight = availableHeight / 2 - gap / 2;
+                } else {
+                    // 下部の画像
+                    const bottomWidth = (availableWidth - gap) / 2;
+                    highlightX = previewOffsetX + padding + (imageIndex === 1 ? 0 : bottomWidth + gap);
+                    highlightY = previewOffsetY + padding + availableHeight / 2 + gap / 2;
+                    highlightWidth = bottomWidth;
+                    highlightHeight = availableHeight / 2 - gap / 2;
+                }
+            } else if (currentLayout.type === '2-top-1-bottom') {
+                if (imageIndex < 2) {
+                    // 上部の画像
+                    const topWidth = (availableWidth - gap) / 2;
+                    highlightX = previewOffsetX + padding + (imageIndex === 0 ? 0 : topWidth + gap);
+                    highlightY = previewOffsetY + padding;
+                    highlightWidth = topWidth;
+                    highlightHeight = availableHeight / 2 - gap / 2;
+                } else {
+                    // 下部の画像
+                    highlightX = previewOffsetX + padding;
+                    highlightY = previewOffsetY + padding + availableHeight / 2 + gap / 2;
+                    highlightWidth = availableWidth;
+                    highlightHeight = availableHeight / 2 - gap / 2;
+                }
+            } else if (currentLayout.type === '1-left-2-right') {
+                if (imageIndex === 0) {
+                    // 左側の画像
+                    highlightX = previewOffsetX + padding;
+                    highlightY = previewOffsetY + padding;
+                    highlightWidth = availableWidth / 2 - gap / 2;
+                    highlightHeight = availableHeight;
+                } else {
+                    // 右側の画像
+                    const rightHeight = (availableHeight - gap) / 2;
+                    highlightX = previewOffsetX + padding + availableWidth / 2 + gap / 2;
+                    highlightY = previewOffsetY + padding + (imageIndex === 1 ? 0 : rightHeight + gap);
+                    highlightWidth = availableWidth / 2 - gap / 2;
+                    highlightHeight = rightHeight;
+                }
+            } else if (currentLayout.type === '2-left-1-right') {
+                if (imageIndex < 2) {
+                    // 左側の画像
+                    const leftHeight = (availableHeight - gap) / 2;
+                    highlightX = previewOffsetX + padding;
+                    highlightY = previewOffsetY + padding + (imageIndex === 0 ? 0 : leftHeight + gap);
+                    highlightWidth = availableWidth / 2 - gap / 2;
+                    highlightHeight = leftHeight;
+                } else {
+                    // 右側の画像
+                    highlightX = padding + availableWidth / 2 + gap / 2;
+                    highlightY = padding;
+                    highlightWidth = availableWidth / 2 - gap / 2;
+                    highlightHeight = availableHeight;
+                }
+            }
+        }
+        
+        // ハイライト要素の作成
+        highlightElement = document.createElement('div');
+        highlightElement.id = 'selectedImageHighlight';
+        highlightElement.className = 'selected-image-highlight';
+        highlightElement.style.position = 'absolute';
+        highlightElement.style.left = `${highlightX}px`;
+        highlightElement.style.top = `${highlightY}px`;
+        highlightElement.style.width = `${highlightWidth}px`;
+        highlightElement.style.height = `${highlightHeight}px`;
+        highlightElement.style.border = '2px solid #3498db';
+        highlightElement.style.boxSizing = 'border-box';
+        highlightElement.style.pointerEvents = 'none'; // クリックイベントを通過させる
+        highlightElement.style.zIndex = '5'; // 最前面ではなく適度なz-index
+        
+        // mainPreviewではなく親要素に追加
+        previewContainer.appendChild(highlightElement);
+        
+        // スクロールイベントのリスナーを追加
+        previewContainer.addEventListener('scroll', updateHighlightPosition);
+        window.addEventListener('resize', updateHighlightPosition);
+    }
+    
+    // ハイライトの位置を更新
+    function updateHighlightPosition() {
+        if (!highlightElement || selectedImageIndex === -1) return;
+        
+        // swapIconの位置も更新
+        if (swapIconElement) {
+            updateSwapIconPosition();
+        }
+    }
+    
+    // ハイライトの削除
+    function removeHighlight() {
+        const highlight = document.getElementById('selectedImageHighlight');
+        if (highlight) {
+            highlight.remove();
+        }
+        
+        // スクロールイベントのリスナーを削除
+        const previewContainer = mainPreview.parentElement;
+        previewContainer.removeEventListener('scroll', updateHighlightPosition);
+        window.removeEventListener('resize', updateHighlightPosition);
+        
+        highlightElement = null;
+    }
+    
+    // 入れ替えアイコンの表示
+    function showSwapIcon(imageIndex) {
+        // 既存のアイコンを削除
+        removeSwapIcon();
+        
+        // プレビュー要素の親要素にposition: relativeを設定
+        const previewContainer = mainPreview.parentElement;
+        const originalPosition = getComputedStyle(previewContainer).position;
+        if (originalPosition === 'static') {
+            previewContainer.style.position = 'relative';
+        }
+        
+        // メインプレビューの位置を取得
+        const previewRect = mainPreview.getBoundingClientRect();
+        const containerRect = previewContainer.getBoundingClientRect();
+        
+        // プレビュー画像の相対位置を計算
+        const previewOffsetX = previewRect.left - containerRect.left;
+        const previewOffsetY = previewRect.top - containerRect.top;
+        
+        const padding = parseInt(paddingControl.value);
+        const gap = parseInt(gapControl.value);
+        
+        const availableWidth = mainPreview.width - (padding * 2);
+        const availableHeight = mainPreview.height - (padding * 2);
+        
+        let iconX, iconY, areaWidth, areaHeight;
+        
+        // レイアウトタイプに応じたアイコン位置の計算
+        if (currentLayout.type === 'vertical-2' || currentLayout.type === 'vertical-3') {
+            const count = currentLayout.positions.length;
+            const imgHeight = (availableHeight - ((count - 1) * gap)) / count;
+            
+            areaWidth = availableWidth;
+            areaHeight = imgHeight;
+            iconX = previewOffsetX + padding + availableWidth / 2;
+            iconY = previewOffsetY + padding + (imageIndex * (imgHeight + gap)) + imgHeight / 2;
+        } else if (currentLayout.type === 'horizontal-2' || currentLayout.type === 'horizontal-3') {
+            const count = currentLayout.positions.length;
+            const imgWidth = (availableWidth - ((count - 1) * gap)) / count;
+            
+            areaWidth = imgWidth;
+            areaHeight = availableHeight;
+            iconX = previewOffsetX + padding + (imageIndex * (imgWidth + gap)) + imgWidth / 2;
+            iconY = previewOffsetY + padding + availableHeight / 2;
+        } else {
+            // 複合レイアウト
+            if (currentLayout.type === '1-top-2-bottom') {
+                if (imageIndex === 0) {
+                    // 上部の画像
+                    areaWidth = availableWidth;
+                    areaHeight = availableHeight / 2 - gap / 2;
+                    iconX = previewOffsetX + padding + availableWidth / 2;
+                    iconY = previewOffsetY + padding + areaHeight / 2;
+                } else {
+                    // 下部の画像
+                    const bottomWidth = (availableWidth - gap) / 2;
+                    areaWidth = bottomWidth;
+                    areaHeight = availableHeight / 2 - gap / 2;
+                    iconX = previewOffsetX + padding + (imageIndex === 1 ? bottomWidth / 2 : bottomWidth + gap + bottomWidth / 2);
+                    iconY = previewOffsetY + padding + availableHeight / 2 + gap / 2 + areaHeight / 2;
+                }
+            } else if (currentLayout.type === '2-top-1-bottom') {
+                if (imageIndex < 2) {
+                    // 上部の画像
+                    const topWidth = (availableWidth - gap) / 2;
+                    areaWidth = topWidth;
+                    areaHeight = availableHeight / 2 - gap / 2;
+                    iconX = previewOffsetX + padding + (imageIndex === 0 ? topWidth / 2 : topWidth + gap + topWidth / 2);
+                    iconY = previewOffsetY + padding + areaHeight / 2;
+                } else {
+                    // 下部の画像
+                    areaWidth = availableWidth;
+                    areaHeight = availableHeight / 2 - gap / 2;
+                    iconX = previewOffsetX + padding + availableWidth / 2;
+                    iconY = previewOffsetY + padding + availableHeight / 2 + gap / 2 + areaHeight / 2;
+                }
+            } else if (currentLayout.type === '1-left-2-right') {
+                if (imageIndex === 0) {
+                    // 左側の画像
+                    areaWidth = availableWidth / 2 - gap / 2;
+                    areaHeight = availableHeight;
+                    iconX = previewOffsetX + padding + areaWidth / 2;
+                    iconY = previewOffsetY + padding + availableHeight / 2;
+                } else {
+                    // 右側の画像
+                    const rightHeight = (availableHeight - gap) / 2;
+                    areaWidth = availableWidth / 2 - gap / 2;
+                    areaHeight = rightHeight;
+                    iconX = previewOffsetX + padding + availableWidth / 2 + gap / 2 + areaWidth / 2;
+                    iconY = previewOffsetY + padding + (imageIndex === 1 ? rightHeight / 2 : rightHeight + gap + rightHeight / 2);
+                }
+            } else if (currentLayout.type === '2-left-1-right') {
+                if (imageIndex < 2) {
+                    // 左側の画像
+                    const leftHeight = (availableHeight - gap) / 2;
+                    areaWidth = availableWidth / 2 - gap / 2;
+                    areaHeight = leftHeight;
+                    iconX = previewOffsetX + padding + areaWidth / 2;
+                    iconY = previewOffsetY + padding + (imageIndex === 0 ? leftHeight / 2 : leftHeight + gap + leftHeight / 2);
+                } else {
+                    // 右側の画像
+                    areaWidth = availableWidth / 2 - gap / 2;
+                    areaHeight = availableHeight;
+                    iconX = previewOffsetX + padding + availableWidth / 2 + gap / 2 + areaWidth / 2;
+                    iconY = previewOffsetY + padding + availableHeight / 2;
+                }
+            }
+        }
+        
+        // アイコン要素の作成
+        swapIconElement = document.createElement('div');
+        swapIconElement.id = 'swapIcon';
+        swapIconElement.className = 'swap-icon';
+        swapIconElement.innerHTML = '<i class="fas fa-exchange-alt"></i>';
+        swapIconElement.style.position = 'absolute';
+        swapIconElement.style.left = `${iconX - 15}px`; // アイコンサイズの半分をオフセット
+        swapIconElement.style.top = `${iconY - 15}px`; // アイコンサイズの半分をオフセット
+        swapIconElement.style.width = '30px';
+        swapIconElement.style.height = '30px';
+        swapIconElement.style.backgroundColor = 'rgba(52, 152, 219, 0.8)';
+        swapIconElement.style.color = 'white';
+        swapIconElement.style.borderRadius = '50%';
+        swapIconElement.style.display = 'flex';
+        swapIconElement.style.justifyContent = 'center';
+        swapIconElement.style.alignItems = 'center';
+        swapIconElement.style.cursor = 'pointer';
+        swapIconElement.style.zIndex = '10';
+        
+        // アイコンのクリックイベント
+        swapIconElement.addEventListener('click', (e) => {
+            e.stopPropagation(); // イベントの伝播を停止
+            
+            // 入れ替えモード状態のトグル
+            isSwapMode = !isSwapMode;
+            
+            if (isSwapMode) {
+                showToast('Please select the image you want to swap.');
+                swapIconElement.style.backgroundColor = 'rgba(231, 76, 60, 0.8)'; // 赤っぽい色に変更
+            } else {
+                resetSelection();
+            }
+        });
+        
+        // mainPreviewではなく親要素に追加
+        previewContainer.appendChild(swapIconElement);
+        
+        // スクロールイベントのリスナーを追加
+        previewContainer.addEventListener('scroll', updateSwapIconPosition);
+        window.addEventListener('resize', updateSwapIconPosition);
+    }
+    
+    // 入れ替えアイコンの位置を更新
+    function updateSwapIconPosition() {
+        if (!swapIconElement || selectedImageIndex === -1) return;
+        
+        // メインプレビューの位置を取得
+        const previewContainer = mainPreview.parentElement;
+        const previewRect = mainPreview.getBoundingClientRect();
+        const containerRect = previewContainer.getBoundingClientRect();
+        
+        // プレビュー画像の相対位置を計算
+        const previewOffsetX = previewRect.left - containerRect.left;
+        const previewOffsetY = previewRect.top - containerRect.top;
+        
+        // アイコンの位置を再計算して更新
+        const padding = parseInt(paddingControl.value);
+        const gap = parseInt(gapControl.value);
+        
+        const availableWidth = mainPreview.width - (padding * 2);
+        const availableHeight = mainPreview.height - (padding * 2);
+        
+        let iconX, iconY;
+        const imageIndex = selectedImageIndex;
+        
+        // レイアウトタイプに応じたアイコン位置の再計算
+        if (currentLayout.type === 'vertical-2' || currentLayout.type === 'vertical-3') {
+            const count = currentLayout.positions.length;
+            const imgHeight = (availableHeight - ((count - 1) * gap)) / count;
+            
+            iconX = previewOffsetX + padding + availableWidth / 2;
+            iconY = previewOffsetY + padding + (imageIndex * (imgHeight + gap)) + imgHeight / 2;
+        } else if (currentLayout.type === 'horizontal-2' || currentLayout.type === 'horizontal-3') {
+            const count = currentLayout.positions.length;
+            const imgWidth = (availableWidth - ((count - 1) * gap)) / count;
+            
+            iconX = previewOffsetX + padding + (imageIndex * (imgWidth + gap)) + imgWidth / 2;
+            iconY = previewOffsetY + padding + availableHeight / 2;
+        } else {
+            // 複合レイアウト（各ケースに対応）
+            if (currentLayout.type === '1-top-2-bottom') {
+                if (imageIndex === 0) {
+                    // 上部の画像
+                    iconX = previewOffsetX + padding + availableWidth / 2;
+                    iconY = previewOffsetY + padding + (availableHeight / 2 - gap / 2) / 2;
+                } else {
+                    // 下部の画像
+                    const bottomWidth = (availableWidth - gap) / 2;
+                    iconX = previewOffsetX + padding + (imageIndex === 1 ? bottomWidth / 2 : bottomWidth + gap + bottomWidth / 2);
+                    iconY = previewOffsetY + padding + availableHeight / 2 + gap / 2 + (availableHeight / 2 - gap / 2) / 2;
+                }
+            } else if (currentLayout.type === '2-top-1-bottom') {
+                if (imageIndex < 2) {
+                    // 上部の画像
+                    const topWidth = (availableWidth - gap) / 2;
+                    iconX = previewOffsetX + padding + (imageIndex === 0 ? topWidth / 2 : topWidth + gap + topWidth / 2);
+                    iconY = previewOffsetY + padding + (availableHeight / 2 - gap / 2) / 2;
+                } else {
+                    // 下部の画像
+                    iconX = previewOffsetX + padding + availableWidth / 2;
+                    iconY = previewOffsetY + padding + availableHeight / 2 + gap / 2 + (availableHeight / 2 - gap / 2) / 2;
+                }
+            } else if (currentLayout.type === '1-left-2-right') {
+                if (imageIndex === 0) {
+                    // 左側の画像
+                    iconX = previewOffsetX + padding + (availableWidth / 2 - gap / 2) / 2;
+                    iconY = previewOffsetY + padding + availableHeight / 2;
+                } else {
+                    // 右側の画像
+                    const rightHeight = (availableHeight - gap) / 2;
+                    iconX = previewOffsetX + padding + availableWidth / 2 + gap / 2 + (availableWidth / 2 - gap / 2) / 2;
+                    iconY = previewOffsetY + padding + (imageIndex === 1 ? rightHeight / 2 : rightHeight + gap + rightHeight / 2);
+                }
+            } else if (currentLayout.type === '2-left-1-right') {
+                if (imageIndex < 2) {
+                    // 左側の画像
+                    const leftHeight = (availableHeight - gap) / 2;
+                    iconX = previewOffsetX + padding + (availableWidth / 2 - gap / 2) / 2;
+                    iconY = previewOffsetY + padding + (imageIndex === 0 ? leftHeight / 2 : leftHeight + gap + leftHeight / 2);
+                } else {
+                    // 右側の画像
+                    iconX = previewOffsetX + padding + availableWidth / 2 + gap / 2 + (availableWidth / 2 - gap / 2) / 2;
+                    iconY = previewOffsetY + padding + availableHeight / 2;
+                }
+            }
+        }
+        
+        // アイコン位置の更新
+        swapIconElement.style.left = `${iconX - 15}px`; // アイコンサイズの半分をオフセット
+        swapIconElement.style.top = `${iconY - 15}px`; // アイコンサイズの半分をオフセット
+    }
+    
+    // 入れ替えアイコンの削除
+    function removeSwapIcon() {
+        const icon = document.getElementById('swapIcon');
+        if (icon) {
+            icon.remove();
+        }
+        
+        // スクロールイベントのリスナーを削除
+        const previewContainer = mainPreview.parentElement;
+        previewContainer.removeEventListener('scroll', updateSwapIconPosition);
+        window.removeEventListener('resize', updateSwapIconPosition);
+        
+        swapIconElement = null;
+    }
+
+    // 画像入れ替え
+    function swapImages(index1, index2) {
+        if (index1 === index2 || index1 < 0 || index2 < 0 || index1 >= images.length || index2 >= images.length) {
+            return;
+        }
+        
+        // 画像の入れ替え
+        const temp = images[index1];
+        images[index1] = images[index2];
+        images[index2] = temp;
     }
 
     // クリック位置に対応する画像のインデックスを取得
@@ -692,204 +1093,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         return -1;
-    }
-
-    // 画像入れ替え
-    function swapImages(index1, index2) {
-        if (index1 === index2 || index1 < 0 || index2 < 0 || index1 >= images.length || index2 >= images.length) {
-            return;
-        }
-        
-        // 画像の入れ替え
-        const temp = images[index1];
-        images[index1] = images[index2];
-        images[index2] = temp;
-    }
-
-    // ドラッグフィードバックを作成
-    function createDragFeedback(clientX, clientY, imageIndex) {
-        // 既存の要素があれば削除
-        removeDragFeedback();
-        
-        // 新しいフィードバック要素を作成
-        dragFeedbackElement = document.createElement('div');
-        dragFeedbackElement.className = 'drag-image-feedback';
-        
-        // 画像を追加
-        const img = document.createElement('img');
-        img.src = images[imageIndex].src;
-        dragFeedbackElement.appendChild(img);
-        
-        // 位置を設定
-        dragFeedbackElement.style.left = `${clientX}px`;
-        dragFeedbackElement.style.top = `${clientY}px`;
-        
-        // ドキュメントに追加
-        document.body.appendChild(dragFeedbackElement);
-    }
-
-    // ドラッグフィードバックの位置を更新
-    function updateDragFeedbackPosition(clientX, clientY) {
-        if (!dragFeedbackElement) return;
-        
-        dragFeedbackElement.style.left = `${clientX}px`;
-        dragFeedbackElement.style.top = `${clientY}px`;
-    }
-
-    // ドラッグフィードバックを削除
-    function removeDragFeedback() {
-        if (dragFeedbackElement) {
-            document.body.removeChild(dragFeedbackElement);
-            dragFeedbackElement = null;
-        }
-    }
-
-    // ドロップターゲットをハイライト
-    function highlightDropTarget(imageIndex) {
-        // 既存のハイライトを削除
-        removeDropHighlight();
-        
-        // 対象の画像のBoundingClientRectを取得
-        const rect = mainPreview.getBoundingClientRect();
-        const padding = parseInt(paddingControl.value);
-        const gap = parseInt(gapControl.value);
-        
-        const availableWidth = mainPreview.width - (padding * 2);
-        const availableHeight = mainPreview.height - (padding * 2);
-        
-        let highlightX, highlightY, highlightWidth, highlightHeight;
-        
-        // レイアウトタイプに応じたハイライト位置の計算
-        if (currentLayout.type === 'vertical-2' || currentLayout.type === 'vertical-3') {
-            const count = currentLayout.positions.length;
-            const imgHeight = (availableHeight - ((count - 1) * gap)) / count;
-            
-            highlightX = padding;
-            highlightY = padding + (imageIndex * (imgHeight + gap));
-            highlightWidth = availableWidth;
-            highlightHeight = imgHeight;
-        } else if (currentLayout.type === 'horizontal-2' || currentLayout.type === 'horizontal-3') {
-            const count = currentLayout.positions.length;
-            const imgWidth = (availableWidth - ((count - 1) * gap)) / count;
-            
-            highlightX = padding + (imageIndex * (imgWidth + gap));
-            highlightY = padding;
-            highlightWidth = imgWidth;
-            highlightHeight = availableHeight;
-        } else {
-            // 複合レイアウト
-            const pos = currentLayout.positions[imageIndex];
-            
-            if (currentLayout.type === '1-top-2-bottom') {
-                if (imageIndex === 0) {
-                    // 上部の画像
-                    highlightX = padding;
-                    highlightY = padding;
-                    highlightWidth = availableWidth;
-                    highlightHeight = availableHeight / 2 - gap / 2;
-                } else {
-                    // 下部の画像
-                    const bottomWidth = (availableWidth - gap) / 2;
-                    highlightX = padding + (imageIndex === 1 ? 0 : bottomWidth + gap);
-                    highlightY = padding + availableHeight / 2 + gap / 2;
-                    highlightWidth = bottomWidth;
-                    highlightHeight = availableHeight / 2 - gap / 2;
-                }
-            } else if (currentLayout.type === '2-top-1-bottom') {
-                if (imageIndex < 2) {
-                    // 上部の画像
-                    const topWidth = (availableWidth - gap) / 2;
-                    highlightX = padding + (imageIndex === 0 ? 0 : topWidth + gap);
-                    highlightY = padding;
-                    highlightWidth = topWidth;
-                    highlightHeight = availableHeight / 2 - gap / 2;
-                } else {
-                    // 下部の画像
-                    highlightX = padding;
-                    highlightY = padding + availableHeight / 2 + gap / 2;
-                    highlightWidth = availableWidth;
-                    highlightHeight = availableHeight / 2 - gap / 2;
-                }
-            } else if (currentLayout.type === '1-left-2-right') {
-                if (imageIndex === 0) {
-                    // 左側の画像
-                    highlightX = padding;
-                    highlightY = padding;
-                    highlightWidth = availableWidth / 2 - gap / 2;
-                    highlightHeight = availableHeight;
-                } else {
-                    // 右側の画像
-                    const rightHeight = (availableHeight - gap) / 2;
-                    highlightX = padding + availableWidth / 2 + gap / 2;
-                    highlightY = padding + (imageIndex === 1 ? 0 : rightHeight + gap);
-                    highlightWidth = availableWidth / 2 - gap / 2;
-                    highlightHeight = rightHeight;
-                }
-            } else if (currentLayout.type === '2-left-1-right') {
-                if (imageIndex < 2) {
-                    // 左側の画像
-                    const leftHeight = (availableHeight - gap) / 2;
-                    highlightX = padding;
-                    highlightY = padding + (imageIndex === 0 ? 0 : leftHeight + gap);
-                    highlightWidth = availableWidth / 2 - gap / 2;
-                    highlightHeight = leftHeight;
-                } else {
-                    // 右側の画像
-                    highlightX = padding + availableWidth / 2 + gap / 2;
-                    highlightY = padding;
-                    highlightWidth = availableWidth / 2 - gap / 2;
-                    highlightHeight = availableHeight;
-                }
-            }
-        }
-        
-        // ハイライト要素の作成
-        const highlight = document.createElement('div');
-        highlight.id = 'dropHighlight';
-        highlight.className = 'drop-target-highlight';
-        highlight.style.position = 'absolute';
-        highlight.style.left = `${rect.left + highlightX}px`;
-        highlight.style.top = `${rect.top + highlightY}px`;
-        highlight.style.width = `${highlightWidth}px`;
-        highlight.style.height = `${highlightHeight}px`;
-        
-        document.body.appendChild(highlight);
-    }
-
-    // ドロップハイライトの削除
-    function removeDropHighlight() {
-        const highlight = document.getElementById('dropHighlight');
-        if (highlight) {
-            highlight.remove();
-        }
-    }
-
-    // トースト通知を表示
-    function showToast(message) {
-        // 既存のトーストを削除
-        const existingToast = document.getElementById('toastMessage');
-        if (existingToast) {
-            existingToast.remove();
-        }
-        
-        // 新しいトーストを作成
-        const toast = document.createElement('div');
-        toast.id = 'toastMessage';
-        toast.className = 'toast-message';
-        toast.textContent = message;
-        
-        // ドキュメントに追加
-        document.body.appendChild(toast);
-        
-        // 一定時間後に自動的に消去
-        setTimeout(() => {
-            toast.classList.add('fade-out');
-            setTimeout(() => {
-                if (toast.parentNode) {
-                    toast.remove();
-                }
-            }, 500);
-        }, 2000);
     }
 
     // レイアウトパターンの生成
@@ -1119,10 +1322,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (layout.type === '2-left-1-right') {
                     if (index < 2) { // 左側の2枚
                         const leftHeight = (availableHeight - gap) / 2;
-                        x = padding;
-                        y = padding + (index === 0 ? 0 : leftHeight + gap);
-                        width = (availableWidth - gap) / 2;
-                        height = leftHeight;
+                        imgX = padding;
+                        imgY = padding + (index === 0 ? 0 : leftHeight + gap);
+                        imgWidth = availableWidth / 2 - gap / 2;
+                        imgHeight = leftHeight;
                     } else { // 右側の大きい画像
                         x = padding + (availableWidth + gap) / 2;
                         y = padding;
@@ -1588,5 +1791,116 @@ document.addEventListener('DOMContentLoaded', () => {
         if (customOption) {
             customOption.remove();
         }
+    }
+
+    // トースト通知を表示
+    function showToast(message) {
+        // 既存のトーストを削除
+        const existingToast = document.getElementById('toastMessage');
+        if (existingToast) {
+            existingToast.remove();
+        }
+        
+        // 新しいトーストを作成
+        const toast = document.createElement('div');
+        toast.id = 'toastMessage';
+        toast.className = 'toast-message';
+        toast.textContent = message;
+        
+        // ドキュメントに追加
+        document.body.appendChild(toast);
+        
+        // 一定時間後に自動的に消去
+        setTimeout(() => {
+            toast.classList.add('fade-out');
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.remove();
+                }
+            }, 500);
+        }, 2000);
+    }
+
+    // レイアウトパターンの生成
+    function generateLayouts() {
+        const layouts = [];
+        
+        if (images.length === 1) {
+            // 1枚の場合は全画面表示
+            layouts.push({
+                type: 'single',
+                positions: [
+                    { x: 0, y: 0, width: 1, height: 1 }
+                ]
+            });
+        } else if (images.length === 2) {
+            // 2枚のレイアウト
+            layouts.push({
+                type: 'vertical-2',
+                positions: [
+                    { x: 0, y: 0, width: 1, height: 0.5 },
+                    { x: 0, y: 0.5, width: 1, height: 0.5 }
+                ]
+            });
+            layouts.push({
+                type: 'horizontal-2',
+                positions: [
+                    { x: 0, y: 0, width: 0.5, height: 1 },
+                    { x: 0.5, y: 0, width: 0.5, height: 1 }
+                ]
+            });
+        } else if (images.length === 3) {
+            // 3枚のレイアウト
+            layouts.push({
+                type: 'vertical-3',
+                positions: [
+                    { x: 0, y: 0, width: 1, height: 1/3 },
+                    { x: 0, y: 1/3, width: 1, height: 1/3 },
+                    { x: 0, y: 2/3, width: 1, height: 1/3 }
+                ]
+            });
+            layouts.push({
+                type: 'horizontal-3',
+                positions: [
+                    { x: 0, y: 0, width: 1/3, height: 1 },
+                    { x: 1/3, y: 0, width: 1/3, height: 1 },
+                    { x: 2/3, y: 0, width: 1/3, height: 1 }
+                ]
+            });
+            layouts.push({
+                type: '1-top-2-bottom',
+                positions: [
+                    { x: 0, y: 0, width: 1, height: 0.5 },
+                    { x: 0, y: 0.5, width: 0.5, height: 0.5 },
+                    { x: 0.5, y: 0.5, width: 0.5, height: 0.5 }
+                ]
+            });
+            layouts.push({
+                type: '2-top-1-bottom',
+                positions: [
+                    { x: 0, y: 0, width: 0.5, height: 0.5 },
+                    { x: 0.5, y: 0, width: 0.5, height: 0.5 },
+                    { x: 0, y: 0.5, width: 1, height: 0.5 }
+                ]
+            });
+            layouts.push({
+                type: '1-left-2-right',
+                positions: [
+                    { x: 0, y: 0, width: 0.5, height: 1 },
+                    { x: 0.5, y: 0, width: 0.5, height: 0.5 },
+                    { x: 0.5, y: 0.5, width: 0.5, height: 0.5 }
+                ]
+            });
+            layouts.push({
+                type: '2-left-1-right',
+                positions: [
+                    { x: 0, y: 0, width: 0.5, height: 0.5 },
+                    { x: 0, y: 0.5, width: 0.5, height: 0.5 },
+                    { x: 0.5, y: 0, width: 0.5, height: 1 }
+                ]
+            });
+        }
+
+        return layouts;
     }
 });
