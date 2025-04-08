@@ -291,7 +291,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         updateUploadedImages();
                     }
                     
-                    if (images.length >= 2) {
+                    // 1枚以上あればコラージュセクションを表示
+                    if (images.length >= 1) {
                         collageSection.style.display = 'block';
                         generateCollage();
                     }
@@ -334,7 +335,7 @@ document.addEventListener('DOMContentLoaded', () => {
             deleteButton.onclick = () => {
                 images.splice(index, 1);
                 updateUploadedImages();
-                if (images.length < 2) {
+                if (images.length < 1) {
                     collageSection.style.display = 'none';
                 } else {
                     generateCollage();
@@ -383,7 +384,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // コラージュ生成
     function generateCollage() {
-        if (images.length < 2) return;
+        if (images.length < 1) return; // 1枚以上あれば処理を続行
 
         // レイアウトパターンの生成
         const layouts = generateLayouts();
@@ -467,7 +468,15 @@ document.addEventListener('DOMContentLoaded', () => {
     function generateLayouts() {
         const layouts = [];
         
-        if (images.length === 2) {
+        if (images.length === 1) {
+            // 1枚の場合は全画面表示
+            layouts.push({
+                type: 'single',
+                positions: [
+                    { x: 0, y: 0, width: 1, height: 1 }
+                ]
+            });
+        } else if (images.length === 2) {
             // 2枚のレイアウト
             layouts.push({
                 type: 'vertical-2',
@@ -567,7 +576,18 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         // レイアウトに基づいて描画方法を選択
-        if (layout.type === 'vertical-2' || layout.type === 'vertical-3') {
+        if (layout.type === 'single') {
+            // 1枚の場合はシンプルに画像を描画
+            if (images[0]) {
+                const x = padding;
+                const y = padding;
+                const width = canvas.width - (padding * 2);
+                const height = canvas.height - (padding * 2);
+                
+                // 画像をクロップして描画
+                drawImageCovered(ctx, images[0], x, y, width, height);
+            }
+        } else if (layout.type === 'vertical-2' || layout.type === 'vertical-3') {
             drawVerticalLayout(canvas, ctx, layout, padding, gap, bgColor);
         } else if (layout.type === 'horizontal-2' || layout.type === 'horizontal-3') {
             drawHorizontalLayout(canvas, ctx, layout, padding, gap, bgColor);
@@ -766,7 +786,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // レイアウトオプションを現在のアスペクト比で更新
     function updateLayoutOptions() {
-        if (images.length < 2) return;
+        if (images.length < 1) return; // 1枚以上あれば処理を続行
         
         const layouts = generateLayouts();
         layoutOptions.innerHTML = '';
@@ -890,28 +910,39 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // レイアウトに応じて画像を描画
             if (currentLayout) {
-                // 利用可能な描画領域
-                const availableWidth = canvas.width - (padding * 2);
-                const availableHeight = canvas.height - (padding * 2);
-                
-                currentLayout.positions.forEach((pos, index) => {
-                    if (images[index]) {
-                        const x = padding + (pos.x * availableWidth);
-                        const y = padding + (pos.y * availableHeight);
-                        const width = pos.width * availableWidth;
-                        const height = pos.height * availableHeight;
-                        
-                        // 間隔を考慮
-                        let adjustedWidth = width;
-                        let adjustedHeight = height;
-                        
-                        if (pos.x + pos.width < 1) adjustedWidth -= gap;
-                        if (pos.y + pos.height < 1) adjustedHeight -= gap;
-                        
-                        // 画像を描画（角丸対応）
-                        drawImageWithCorners(ctx, images[index], x, y, adjustedWidth, adjustedHeight, cornerRadius);
-                    }
-                });
+                // 1枚の画像の場合はsingleレイアウト
+                if (currentLayout.type === 'single' && images[0]) {
+                    const x = padding;
+                    const y = padding;
+                    const width = canvas.width - (padding * 2);
+                    const height = canvas.height - (padding * 2);
+                    
+                    // 画像を描画（角丸対応）
+                    drawImageWithCorners(ctx, images[0], x, y, width, height, cornerRadius);
+                } else {
+                    // 複数画像のレイアウト
+                    const availableWidth = canvas.width - (padding * 2);
+                    const availableHeight = canvas.height - (padding * 2);
+                    
+                    currentLayout.positions.forEach((pos, index) => {
+                        if (images[index]) {
+                            const x = padding + (pos.x * availableWidth);
+                            const y = padding + (pos.y * availableHeight);
+                            const width = pos.width * availableWidth;
+                            const height = pos.height * availableHeight;
+                            
+                            // 間隔を考慮
+                            let adjustedWidth = width;
+                            let adjustedHeight = height;
+                            
+                            if (pos.x + pos.width < 1) adjustedWidth -= gap;
+                            if (pos.y + pos.height < 1) adjustedHeight -= gap;
+                            
+                            // 画像を描画（角丸対応）
+                            drawImageWithCorners(ctx, images[index], x, y, adjustedWidth, adjustedHeight, cornerRadius);
+                        }
+                    });
+                }
             }
             
             // ダウンロード
