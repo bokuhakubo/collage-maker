@@ -41,6 +41,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let originalWidth = 0;
     let originalHeight = 0;
 
+    // ドラッグ＆ドロップ関連の変数
+    let isDragging = false;
+    let draggedImageIndex = -1;
+    let dragOverImageIndex = -1;
+    let dragFeedbackElement = null;
+
     // SNSサイズのデータ
     const snsSizes = {
         x: [
@@ -462,6 +468,428 @@ document.addEventListener('DOMContentLoaded', () => {
                 firstLayoutImg.style.borderColor = '#3498db';
             }
         }
+
+        // ドラッグ＆ドロップ機能を初期化
+        initDragAndDrop();
+    }
+
+    // ドラッグ＆ドロップの初期化
+    function initDragAndDrop() {
+        if (images.length < 2) return; // 画像が2枚以上ある場合のみ有効化
+
+        // 既にイベントリスナーがある場合は一度削除（再初期化を防ぐため）
+        mainPreview.removeEventListener('mousedown', handleMouseDown);
+        
+        // マウスダウンイベントの追加
+        mainPreview.addEventListener('mousedown', handleMouseDown);
+    }
+
+    // マウスダウンイベントハンドラ
+    function handleMouseDown(e) {
+        if (images.length < 2 || currentLayout.type === 'single') return;
+
+        const rect = mainPreview.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        
+        // クリックした位置にある画像を特定
+        const imageIndex = getImageIndexAtPosition(x, y);
+        
+        if (imageIndex !== -1) {
+            e.preventDefault();
+            isDragging = true;
+            draggedImageIndex = imageIndex;
+            
+            // ドラッグ中のフィードバック要素を作成
+            createDragFeedback(e.clientX, e.clientY, imageIndex);
+            
+            // マウスムーブとマウスアップのイベントリスナーを追加
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+            
+            // カーソルスタイルを変更
+            mainPreview.style.cursor = 'grabbing';
+            
+            // ドラッグ中のメッセージを表示
+            showToast('画像をドラッグしています。別の画像の位置にドロップして入れ替えることができます。');
+        }
+    }
+
+    // マウスムーブイベントハンドラ
+    function handleMouseMove(e) {
+        if (!isDragging) return;
+        
+        // ドラッグフィードバックの位置を更新
+        updateDragFeedbackPosition(e.clientX, e.clientY);
+        
+        // マウスがプレビュー内にあるか確認
+        const rect = mainPreview.getBoundingClientRect();
+        if (e.clientX >= rect.left && e.clientX <= rect.right && 
+            e.clientY >= rect.top && e.clientY <= rect.bottom) {
+            
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            // ドロップ先の画像を特定
+            const imageIndex = getImageIndexAtPosition(x, y);
+            
+            if (imageIndex !== -1 && imageIndex !== draggedImageIndex) {
+                dragOverImageIndex = imageIndex;
+                highlightDropTarget(imageIndex);
+            } else {
+                dragOverImageIndex = -1;
+                removeDropHighlight();
+            }
+        } else {
+            dragOverImageIndex = -1;
+            removeDropHighlight();
+        }
+    }
+
+    // マウスアップイベントハンドラ
+    function handleMouseUp(e) {
+        if (!isDragging) return;
+        
+        // ドラッグ終了処理
+        if (draggedImageIndex !== -1 && dragOverImageIndex !== -1) {
+            // 画像を入れ替え
+            swapImages(draggedImageIndex, dragOverImageIndex);
+            
+            // コラージュを更新
+            updateCollage();
+            
+            // 完了メッセージ
+            showToast('画像を入れ替えました');
+        }
+        
+        // リセット処理
+        isDragging = false;
+        draggedImageIndex = -1;
+        dragOverImageIndex = -1;
+        removeDragFeedback();
+        removeDropHighlight();
+        
+        // イベントリスナーを削除
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+        
+        // カーソルスタイルを元に戻す
+        mainPreview.style.cursor = 'pointer';
+    }
+
+    // クリック位置に対応する画像のインデックスを取得
+    function getImageIndexAtPosition(x, y) {
+        if (!currentLayout || images.length < 2) return -1;
+        
+        const padding = parseInt(paddingControl.value);
+        const gap = parseInt(gapControl.value);
+        
+        const availableWidth = mainPreview.width - (padding * 2);
+        const availableHeight = mainPreview.height - (padding * 2);
+        
+        // レイアウトタイプに応じた座標計算
+        if (currentLayout.type === 'vertical-2' || currentLayout.type === 'vertical-3') {
+            // 垂直レイアウト
+            const count = currentLayout.positions.length;
+            const imgHeight = (availableHeight - ((count - 1) * gap)) / count;
+            
+            for (let i = 0; i < count && i < images.length; i++) {
+                const top = padding + (i * (imgHeight + gap));
+                const bottom = top + imgHeight;
+                
+                if (y >= top && y <= bottom) {
+                    return i;
+                }
+            }
+        } else if (currentLayout.type === 'horizontal-2' || currentLayout.type === 'horizontal-3') {
+            // 水平レイアウト
+            const count = currentLayout.positions.length;
+            const imgWidth = (availableWidth - ((count - 1) * gap)) / count;
+            
+            for (let i = 0; i < count && i < images.length; i++) {
+                const left = padding + (i * (imgWidth + gap));
+                const right = left + imgWidth;
+                
+                if (x >= left && x <= right) {
+                    return i;
+                }
+            }
+        } else {
+            // 複合レイアウト
+            for (let i = 0; i < currentLayout.positions.length && i < images.length; i++) {
+                const pos = currentLayout.positions[i];
+                
+                // 画像の領域を計算
+                let imgX, imgY, imgWidth, imgHeight;
+                
+                if (currentLayout.type === '1-top-2-bottom') {
+                    if (i === 0) {
+                        // 上部の画像
+                        imgX = padding;
+                        imgY = padding;
+                        imgWidth = availableWidth;
+                        imgHeight = availableHeight / 2 - gap / 2;
+                    } else {
+                        // 下部の画像
+                        const bottomWidth = (availableWidth - gap) / 2;
+                        imgX = padding + (i === 1 ? 0 : bottomWidth + gap);
+                        imgY = padding + availableHeight / 2 + gap / 2;
+                        imgWidth = bottomWidth;
+                        imgHeight = availableHeight / 2 - gap / 2;
+                    }
+                } else if (currentLayout.type === '2-top-1-bottom') {
+                    if (i < 2) {
+                        // 上部の画像
+                        const topWidth = (availableWidth - gap) / 2;
+                        imgX = padding + (i === 0 ? 0 : topWidth + gap);
+                        imgY = padding;
+                        imgWidth = topWidth;
+                        imgHeight = availableHeight / 2 - gap / 2;
+                    } else {
+                        // 下部の画像
+                        imgX = padding;
+                        imgY = padding + availableHeight / 2 + gap / 2;
+                        imgWidth = availableWidth;
+                        imgHeight = availableHeight / 2 - gap / 2;
+                    }
+                } else if (currentLayout.type === '1-left-2-right') {
+                    if (i === 0) {
+                        // 左側の画像
+                        imgX = padding;
+                        imgY = padding;
+                        imgWidth = availableWidth / 2 - gap / 2;
+                        imgHeight = availableHeight;
+                    } else {
+                        // 右側の画像
+                        const rightHeight = (availableHeight - gap) / 2;
+                        imgX = padding + availableWidth / 2 + gap / 2;
+                        imgY = padding + (i === 1 ? 0 : rightHeight + gap);
+                        imgWidth = availableWidth / 2 - gap / 2;
+                        imgHeight = rightHeight;
+                    }
+                } else if (currentLayout.type === '2-left-1-right') {
+                    if (i < 2) {
+                        // 左側の画像
+                        const leftHeight = (availableHeight - gap) / 2;
+                        imgX = padding;
+                        imgY = padding + (i === 0 ? 0 : leftHeight + gap);
+                        imgWidth = availableWidth / 2 - gap / 2;
+                        imgHeight = leftHeight;
+                    } else {
+                        // 右側の画像
+                        imgX = padding + availableWidth / 2 + gap / 2;
+                        imgY = padding;
+                        imgWidth = availableWidth / 2 - gap / 2;
+                        imgHeight = availableHeight;
+                    }
+                }
+                
+                // 座標が画像の領域内かチェック
+                if (x >= imgX && x <= imgX + imgWidth && y >= imgY && y <= imgY + imgHeight) {
+                    return i;
+                }
+            }
+        }
+        
+        return -1;
+    }
+
+    // 画像入れ替え
+    function swapImages(index1, index2) {
+        if (index1 === index2 || index1 < 0 || index2 < 0 || index1 >= images.length || index2 >= images.length) {
+            return;
+        }
+        
+        // 画像の入れ替え
+        const temp = images[index1];
+        images[index1] = images[index2];
+        images[index2] = temp;
+    }
+
+    // ドラッグフィードバックを作成
+    function createDragFeedback(clientX, clientY, imageIndex) {
+        // 既存の要素があれば削除
+        removeDragFeedback();
+        
+        // 新しいフィードバック要素を作成
+        dragFeedbackElement = document.createElement('div');
+        dragFeedbackElement.className = 'drag-image-feedback';
+        
+        // 画像を追加
+        const img = document.createElement('img');
+        img.src = images[imageIndex].src;
+        dragFeedbackElement.appendChild(img);
+        
+        // 位置を設定
+        dragFeedbackElement.style.left = `${clientX}px`;
+        dragFeedbackElement.style.top = `${clientY}px`;
+        
+        // ドキュメントに追加
+        document.body.appendChild(dragFeedbackElement);
+    }
+
+    // ドラッグフィードバックの位置を更新
+    function updateDragFeedbackPosition(clientX, clientY) {
+        if (!dragFeedbackElement) return;
+        
+        dragFeedbackElement.style.left = `${clientX}px`;
+        dragFeedbackElement.style.top = `${clientY}px`;
+    }
+
+    // ドラッグフィードバックを削除
+    function removeDragFeedback() {
+        if (dragFeedbackElement) {
+            document.body.removeChild(dragFeedbackElement);
+            dragFeedbackElement = null;
+        }
+    }
+
+    // ドロップターゲットをハイライト
+    function highlightDropTarget(imageIndex) {
+        // 既存のハイライトを削除
+        removeDropHighlight();
+        
+        // 対象の画像のBoundingClientRectを取得
+        const rect = mainPreview.getBoundingClientRect();
+        const padding = parseInt(paddingControl.value);
+        const gap = parseInt(gapControl.value);
+        
+        const availableWidth = mainPreview.width - (padding * 2);
+        const availableHeight = mainPreview.height - (padding * 2);
+        
+        let highlightX, highlightY, highlightWidth, highlightHeight;
+        
+        // レイアウトタイプに応じたハイライト位置の計算
+        if (currentLayout.type === 'vertical-2' || currentLayout.type === 'vertical-3') {
+            const count = currentLayout.positions.length;
+            const imgHeight = (availableHeight - ((count - 1) * gap)) / count;
+            
+            highlightX = padding;
+            highlightY = padding + (imageIndex * (imgHeight + gap));
+            highlightWidth = availableWidth;
+            highlightHeight = imgHeight;
+        } else if (currentLayout.type === 'horizontal-2' || currentLayout.type === 'horizontal-3') {
+            const count = currentLayout.positions.length;
+            const imgWidth = (availableWidth - ((count - 1) * gap)) / count;
+            
+            highlightX = padding + (imageIndex * (imgWidth + gap));
+            highlightY = padding;
+            highlightWidth = imgWidth;
+            highlightHeight = availableHeight;
+        } else {
+            // 複合レイアウト
+            const pos = currentLayout.positions[imageIndex];
+            
+            if (currentLayout.type === '1-top-2-bottom') {
+                if (imageIndex === 0) {
+                    // 上部の画像
+                    highlightX = padding;
+                    highlightY = padding;
+                    highlightWidth = availableWidth;
+                    highlightHeight = availableHeight / 2 - gap / 2;
+                } else {
+                    // 下部の画像
+                    const bottomWidth = (availableWidth - gap) / 2;
+                    highlightX = padding + (imageIndex === 1 ? 0 : bottomWidth + gap);
+                    highlightY = padding + availableHeight / 2 + gap / 2;
+                    highlightWidth = bottomWidth;
+                    highlightHeight = availableHeight / 2 - gap / 2;
+                }
+            } else if (currentLayout.type === '2-top-1-bottom') {
+                if (imageIndex < 2) {
+                    // 上部の画像
+                    const topWidth = (availableWidth - gap) / 2;
+                    highlightX = padding + (imageIndex === 0 ? 0 : topWidth + gap);
+                    highlightY = padding;
+                    highlightWidth = topWidth;
+                    highlightHeight = availableHeight / 2 - gap / 2;
+                } else {
+                    // 下部の画像
+                    highlightX = padding;
+                    highlightY = padding + availableHeight / 2 + gap / 2;
+                    highlightWidth = availableWidth;
+                    highlightHeight = availableHeight / 2 - gap / 2;
+                }
+            } else if (currentLayout.type === '1-left-2-right') {
+                if (imageIndex === 0) {
+                    // 左側の画像
+                    highlightX = padding;
+                    highlightY = padding;
+                    highlightWidth = availableWidth / 2 - gap / 2;
+                    highlightHeight = availableHeight;
+                } else {
+                    // 右側の画像
+                    const rightHeight = (availableHeight - gap) / 2;
+                    highlightX = padding + availableWidth / 2 + gap / 2;
+                    highlightY = padding + (imageIndex === 1 ? 0 : rightHeight + gap);
+                    highlightWidth = availableWidth / 2 - gap / 2;
+                    highlightHeight = rightHeight;
+                }
+            } else if (currentLayout.type === '2-left-1-right') {
+                if (imageIndex < 2) {
+                    // 左側の画像
+                    const leftHeight = (availableHeight - gap) / 2;
+                    highlightX = padding;
+                    highlightY = padding + (imageIndex === 0 ? 0 : leftHeight + gap);
+                    highlightWidth = availableWidth / 2 - gap / 2;
+                    highlightHeight = leftHeight;
+                } else {
+                    // 右側の画像
+                    highlightX = padding + availableWidth / 2 + gap / 2;
+                    highlightY = padding;
+                    highlightWidth = availableWidth / 2 - gap / 2;
+                    highlightHeight = availableHeight;
+                }
+            }
+        }
+        
+        // ハイライト要素の作成
+        const highlight = document.createElement('div');
+        highlight.id = 'dropHighlight';
+        highlight.className = 'drop-target-highlight';
+        highlight.style.position = 'absolute';
+        highlight.style.left = `${rect.left + highlightX}px`;
+        highlight.style.top = `${rect.top + highlightY}px`;
+        highlight.style.width = `${highlightWidth}px`;
+        highlight.style.height = `${highlightHeight}px`;
+        
+        document.body.appendChild(highlight);
+    }
+
+    // ドロップハイライトの削除
+    function removeDropHighlight() {
+        const highlight = document.getElementById('dropHighlight');
+        if (highlight) {
+            highlight.remove();
+        }
+    }
+
+    // トースト通知を表示
+    function showToast(message) {
+        // 既存のトーストを削除
+        const existingToast = document.getElementById('toastMessage');
+        if (existingToast) {
+            existingToast.remove();
+        }
+        
+        // 新しいトーストを作成
+        const toast = document.createElement('div');
+        toast.id = 'toastMessage';
+        toast.className = 'toast-message';
+        toast.textContent = message;
+        
+        // ドキュメントに追加
+        document.body.appendChild(toast);
+        
+        // 一定時間後に自動的に消去
+        setTimeout(() => {
+            toast.classList.add('fade-out');
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.remove();
+                }
+            }, 500);
+        }, 2000);
     }
 
     // レイアウトパターンの生成

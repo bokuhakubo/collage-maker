@@ -200,6 +200,7 @@ h2 {
     max-width: 100%;
     max-height: 100%;
     display: block;
+    cursor: pointer;
 }
 
 .zoom-controls {
@@ -560,4 +561,54 @@ button:hover {
 .size-option-dimensions {
     font-size: 14px;
     color: #aaa;
+}
+
+/* ドラッグ＆ドロップ関連のスタイル */
+.drag-image-feedback {
+    position: fixed;
+    width: 100px;
+    height: 100px;
+    border-radius: 4px;
+    pointer-events: none;
+    z-index: 1000;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+    opacity: 0.8;
+}
+
+.drag-image-feedback img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.drop-target-highlight {
+    position: absolute;
+    border: 2px dashed #3498db;
+    background-color: rgba(52, 152, 219, 0.1);
+    z-index: 100;
+    border-radius: 4px;
+    pointer-events: none;
+}
+
+/* トースト通知 */
+.toast-message {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 4px;
+    font-size: 14px;
+    z-index: 1000;
+    max-width: 80%;
+    text-align: center;
+    transition: opacity 0.3s ease;
+}
+
+.toast-message.fade-out {
+    opacity: 0;
 } 
