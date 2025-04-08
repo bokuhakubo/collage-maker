@@ -264,14 +264,33 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        // アップロード開始時に先にプレースホルダーを作成
+        const placeholders = [];
         files.forEach(file => {
+            // 仮の画像オブジェクトを作成（実際の画像はまだロードされていない）
+            const placeholder = new Image();
+            placeholder.dataset.loading = "true"; // ロード中フラグを設定
+            placeholders.push(placeholder);
+            images.push(placeholder);
+        });
+        
+        // プレースホルダーを先に表示
+        updateUploadedImages();
+
+        // 実際の画像ファイルを読み込む
+        files.forEach((file, idx) => {
             const reader = new FileReader();
             reader.onload = (e) => {
                 const img = new Image();
                 img.src = e.target.result;
                 img.onload = () => {
-                    images.push(img);
-                    updateUploadedImages();
+                    // 読み込み完了後、プレースホルダーを実際の画像で置き換え
+                    const index = images.indexOf(placeholders[idx]);
+                    if (index !== -1) {
+                        images[index] = img;
+                        updateUploadedImages();
+                    }
+                    
                     if (images.length >= 2) {
                         collageSection.style.display = 'block';
                         generateCollage();
@@ -289,8 +308,23 @@ document.addEventListener('DOMContentLoaded', () => {
             const container = document.createElement('div');
             container.className = 'image-container';
             
+            // ローディング中かどうかを確認
+            const isLoading = img.dataset && img.dataset.loading === "true";
+            
+            // ローディング表示を追加
+            if (isLoading) {
+                const loadingDiv = document.createElement('div');
+                loadingDiv.className = 'image-loading';
+                const spinner = document.createElement('div');
+                spinner.className = 'image-spinner';
+                loadingDiv.appendChild(spinner);
+                container.appendChild(loadingDiv);
+            }
+            
             const imgElement = document.createElement('img');
-            imgElement.src = img.src;
+            if (!isLoading) {
+                imgElement.src = img.src;
+            }
             
             const actions = document.createElement('div');
             actions.className = 'image-actions';
@@ -316,6 +350,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 input.onchange = (e) => {
                     const file = e.target.files[0];
                     if (file) {
+                        // 既存の画像をローディング状態に変更
+                        images[index].dataset = images[index].dataset || {};
+                        images[index].dataset.loading = "true";
+                        updateUploadedImages();
+                        
                         const reader = new FileReader();
                         reader.onload = (e) => {
                             const newImg = new Image();
