@@ -46,6 +46,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let isSwapMode = false; // 入れ替えモード状態フラグ
     let swapIconElement = null; // 入れ替えアイコン要素
     let highlightElement = null; // 選択中の画像ハイライト要素
+    let positionAdjustElement = null; // 位置調整アイコン要素
+    let imagePositionOffsets = {}; // 画像位置のオフセットを保存するオブジェクト
 
     // SNSサイズのデータ
     const snsSizes = {
@@ -819,13 +821,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
-        // アイコン要素の作成
+        // 入れ替えアイコン要素の作成
         swapIconElement = document.createElement('div');
         swapIconElement.id = 'swapIcon';
         swapIconElement.className = 'swap-icon';
         swapIconElement.innerHTML = '<i class="fas fa-exchange-alt"></i>';
         swapIconElement.style.position = 'absolute';
-        swapIconElement.style.left = `${iconX - 15}px`; // アイコンサイズの半分をオフセット
+        swapIconElement.style.left = `${iconX - 35}px`; // 左側に配置
         swapIconElement.style.top = `${iconY - 15}px`; // アイコンサイズの半分をオフセット
         swapIconElement.style.width = '30px';
         swapIconElement.style.height = '30px';
@@ -853,15 +855,43 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
         
+        // 位置調整アイコン要素の作成
+        positionAdjustElement = document.createElement('div');
+        positionAdjustElement.id = 'positionAdjustIcon';
+        positionAdjustElement.className = 'position-adjust-icon';
+        positionAdjustElement.innerHTML = '<i class="fas fa-arrows-alt"></i>';
+        positionAdjustElement.style.position = 'absolute';
+        positionAdjustElement.style.left = `${iconX + 5}px`; // 右側に配置
+        positionAdjustElement.style.top = `${iconY - 15}px`; // アイコンサイズの半分をオフセット
+        positionAdjustElement.style.width = '30px';
+        positionAdjustElement.style.height = '30px';
+        positionAdjustElement.style.backgroundColor = 'rgba(46, 204, 113, 0.8)'; // 緑色
+        positionAdjustElement.style.color = 'white';
+        positionAdjustElement.style.borderRadius = '50%';
+        positionAdjustElement.style.display = 'flex';
+        positionAdjustElement.style.justifyContent = 'center';
+        positionAdjustElement.style.alignItems = 'center';
+        positionAdjustElement.style.cursor = 'pointer';
+        positionAdjustElement.style.zIndex = '10';
+        
+        // 位置調整アイコンのクリックイベント
+        positionAdjustElement.addEventListener('click', (e) => {
+            e.stopPropagation(); // イベントの伝播を停止
+            
+            // 実装は後日するので、今はメッセージを表示するだけ
+            showToast('位置調整機能は準備中です');
+        });
+        
         // mainPreviewではなく親要素に追加
         previewContainer.appendChild(swapIconElement);
+        previewContainer.appendChild(positionAdjustElement);
         
         // スクロールイベントのリスナーを追加
         previewContainer.addEventListener('scroll', updateSwapIconPosition);
         window.addEventListener('resize', updateSwapIconPosition);
     }
     
-    // 入れ替えアイコンの位置を更新
+    // 入れ替えアイコンと位置調整アイコンの位置を更新
     function updateSwapIconPosition() {
         if (!swapIconElement || selectedImageIndex === -1) return;
         
@@ -947,15 +977,26 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         // アイコン位置の更新
-        swapIconElement.style.left = `${iconX - 15}px`; // アイコンサイズの半分をオフセット
+        swapIconElement.style.left = `${iconX - 35}px`; // 左側に配置
         swapIconElement.style.top = `${iconY - 15}px`; // アイコンサイズの半分をオフセット
+        
+        // 位置調整アイコン位置の更新
+        if (positionAdjustElement) {
+            positionAdjustElement.style.left = `${iconX + 5}px`; // 右側に配置
+            positionAdjustElement.style.top = `${iconY - 15}px`; // アイコンサイズの半分をオフセット
+        }
     }
     
-    // 入れ替えアイコンの削除
+    // 入れ替えアイコンと位置調整アイコンの削除
     function removeSwapIcon() {
-        const icon = document.getElementById('swapIcon');
-        if (icon) {
-            icon.remove();
+        const swapIcon = document.getElementById('swapIcon');
+        if (swapIcon) {
+            swapIcon.remove();
+        }
+        
+        const positionAdjustIcon = document.getElementById('positionAdjustIcon');
+        if (positionAdjustIcon) {
+            positionAdjustIcon.remove();
         }
         
         // スクロールイベントのリスナーを削除
@@ -964,6 +1005,7 @@ document.addEventListener('DOMContentLoaded', () => {
         window.removeEventListener('resize', updateSwapIconPosition);
         
         swapIconElement = null;
+        positionAdjustElement = null;
     }
 
     // 画像入れ替え
