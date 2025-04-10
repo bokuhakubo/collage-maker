@@ -49,6 +49,14 @@ document.addEventListener('DOMContentLoaded', () => {
     let positionAdjustElement = null; // 位置調整アイコン要素
     let imagePositionOffsets = {}; // 画像位置のオフセットを保存するオブジェクト
 
+    // 位置調整関連の変数
+    let isAdjustMode = false; // 位置調整モード状態フラグ
+    let isDragging = false; // ドラッグ中フラグ
+    let dragStartX = 0; // ドラッグ開始X座標
+    let dragStartY = 0; // ドラッグ開始Y座標
+    let currentOffsetX = 0; // 現在のXオフセット
+    let currentOffsetY = 0; // 現在のYオフセット
+
     // SNSサイズのデータ
     const snsSizes = {
         x: [
@@ -494,13 +502,20 @@ document.addEventListener('DOMContentLoaded', () => {
     function handleImageClick(e) {
         if (images.length < 2 || currentLayout.type === 'single') return;
 
+        // 位置調整モード中でドラッグ中の場合は画像選択を無視
+        if (isAdjustMode && isDragging) {
+            e.stopPropagation();
+            return;
+        }
+
+        // クリック位置から画像のインデックスを取得
         const rect = mainPreview.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
         
         // クリックした位置にある画像を特定
         const imageIndex = getImageIndexAtPosition(x, y);
-        
+
         if (imageIndex !== -1) {
             e.stopPropagation(); // イベントの伝播を停止
             
@@ -514,12 +529,53 @@ document.addEventListener('DOMContentLoaded', () => {
                     updateCollage();
                     
                     // 完了メッセージ
-                    showToast('Images have been swapped.');
+                    showToast('Images swapped');
                 }
                 
                 // 選択状態をリセット
                 resetSelection();
+            } else if (isAdjustMode) {
+                // 位置調整モードがアクティブな場合
+                if (selectedImageIndex !== imageIndex) {
+                    // 既存の選択がある場合は前のオーバーレイを削除
+                    if (selectedImageIndex !== -1) {
+                        removeAdjustOverlay();
+                        removeHighlight();
+                    }
+                    
+                    // 選択画像を変更
+                    selectedImageIndex = imageIndex;
+                    
+                    // 選択された画像をハイライト表示
+                    highlightSelectedImage(imageIndex);
+                    
+                    // ハイライト枠を赤色に変更
+                    if (highlightElement) {
+                        highlightElement.style.border = '3px solid #e74c3c';
+                    }
+                    
+                    // 入れ替えアイコンと位置調整アイコンを表示（位置調整アイコンは既にアクティブ）
+                    showSwapIcon(imageIndex);
+                    
+                    // 現在のオフセットを更新
+                    if (!imagePositionOffsets[imageIndex]) {
+                        imagePositionOffsets[imageIndex] = { x: 0, y: 0 };
+                    }
+                    currentOffsetX = imagePositionOffsets[imageIndex].x;
+                    currentOffsetY = imagePositionOffsets[imageIndex].y;
+                    
+                    // 新しい画像の位置に合わせてオーバーレイを再作成
+                    createAdjustOverlay();
+                    
+                    // コラージュを更新して新しい画像の表示を反映
+                    updateCollage();
+                    
+                    // 選択変更を通知
+                    showToast('Selected another image');
+                }
+                // 既に選択中の画像をクリックした場合は何もしない（選択を維持）
             } else {
+                // 通常モード（位置調整モードでも入れ替えモードでもない）
                 // 新しく画像を選択
                 selectedImageIndex = imageIndex;
                 
@@ -550,8 +606,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function resetSelection() {
         selectedImageIndex = -1;
         isSwapMode = false;
+        isAdjustMode = false;
         removeSwapIcon();
         removeHighlight();
+        // ドラッグイベントリスナーを削除
+        removePositionAdjustEventListeners();
     }
     
     // 選択画像のハイライト表示
@@ -673,7 +732,7 @@ document.addEventListener('DOMContentLoaded', () => {
         highlightElement.style.top = `${highlightY}px`;
         highlightElement.style.width = `${highlightWidth}px`;
         highlightElement.style.height = `${highlightHeight}px`;
-        highlightElement.style.border = '2px solid #3498db';
+        highlightElement.style.border = '3px solid #3498db';
         highlightElement.style.boxSizing = 'border-box';
         highlightElement.style.pointerEvents = 'none'; // クリックイベントを通過させる
         highlightElement.style.zIndex = '5'; // 最前面ではなく適度なz-index
@@ -716,184 +775,142 @@ document.addEventListener('DOMContentLoaded', () => {
         // 既存のアイコンを削除
         removeSwapIcon();
         
-        // プレビュー要素の親要素にposition: relativeを設定
+        if (imageIndex === -1) return;
+        
         const previewContainer = mainPreview.parentElement;
-        const originalPosition = getComputedStyle(previewContainer).position;
-        if (originalPosition === 'static') {
-            previewContainer.style.position = 'relative';
-        }
         
-        // メインプレビューの位置を取得
-        const previewRect = mainPreview.getBoundingClientRect();
-        const containerRect = previewContainer.getBoundingClientRect();
+        // アイコンコンテナを作成（両方のアイコンをまとめるための要素）
+        const iconContainer = document.createElement('div');
+        iconContainer.id = 'iconContainer';
+        iconContainer.style.position = 'absolute';
+        iconContainer.style.background = '#222';
+        iconContainer.style.boxShadow = '0 .125em .25em rgba(0,0,0,.25)';
+        iconContainer.style.borderRadius = '.25em';
+        iconContainer.style.display = 'flex';
+        iconContainer.style.zIndex = '10';
+        iconContainer.style.padding = '2px';
         
-        // プレビュー画像の相対位置を計算
-        const previewOffsetX = previewRect.left - containerRect.left;
-        const previewOffsetY = previewRect.top - containerRect.top;
-        
-        const padding = parseInt(paddingControl.value);
-        const gap = parseInt(gapControl.value);
-        
-        const availableWidth = mainPreview.width - (padding * 2);
-        const availableHeight = mainPreview.height - (padding * 2);
-        
-        let iconX, iconY, areaWidth, areaHeight;
-        
-        // レイアウトタイプに応じたアイコン位置の計算
-        if (currentLayout.type === 'vertical-2' || currentLayout.type === 'vertical-3') {
-            const count = currentLayout.positions.length;
-            const imgHeight = (availableHeight - ((count - 1) * gap)) / count;
-            
-            areaWidth = availableWidth;
-            areaHeight = imgHeight;
-            iconX = previewOffsetX + padding + availableWidth / 2;
-            iconY = previewOffsetY + padding + (imageIndex * (imgHeight + gap)) + imgHeight / 2;
-        } else if (currentLayout.type === 'horizontal-2' || currentLayout.type === 'horizontal-3') {
-            const count = currentLayout.positions.length;
-            const imgWidth = (availableWidth - ((count - 1) * gap)) / count;
-            
-            areaWidth = imgWidth;
-            areaHeight = availableHeight;
-            iconX = previewOffsetX + padding + (imageIndex * (imgWidth + gap)) + imgWidth / 2;
-            iconY = previewOffsetY + padding + availableHeight / 2;
-        } else {
-            // 複合レイアウト
-            if (currentLayout.type === '1-top-2-bottom') {
-                if (imageIndex === 0) {
-                    // 上部の画像
-                    areaWidth = availableWidth;
-                    areaHeight = availableHeight / 2 - gap / 2;
-                    iconX = previewOffsetX + padding + availableWidth / 2;
-                    iconY = previewOffsetY + padding + areaHeight / 2;
-                } else {
-                    // 下部の画像
-                    const bottomWidth = (availableWidth - gap) / 2;
-                    areaWidth = bottomWidth;
-                    areaHeight = availableHeight / 2 - gap / 2;
-                    iconX = previewOffsetX + padding + (imageIndex === 1 ? bottomWidth / 2 : bottomWidth + gap + bottomWidth / 2);
-                    iconY = previewOffsetY + padding + availableHeight / 2 + gap / 2 + areaHeight / 2;
-                }
-            } else if (currentLayout.type === '2-top-1-bottom') {
-                if (imageIndex < 2) {
-                    // 上部の画像
-                    const topWidth = (availableWidth - gap) / 2;
-                    areaWidth = topWidth;
-                    areaHeight = availableHeight / 2 - gap / 2;
-                    iconX = previewOffsetX + padding + (imageIndex === 0 ? topWidth / 2 : topWidth + gap + topWidth / 2);
-                    iconY = previewOffsetY + padding + areaHeight / 2;
-                } else {
-                    // 下部の画像
-                    areaWidth = availableWidth;
-                    areaHeight = availableHeight / 2 - gap / 2;
-                    iconX = previewOffsetX + padding + availableWidth / 2;
-                    iconY = previewOffsetY + padding + availableHeight / 2 + gap / 2 + areaHeight / 2;
-                }
-            } else if (currentLayout.type === '1-left-2-right') {
-                if (imageIndex === 0) {
-                    // 左側の画像
-                    areaWidth = availableWidth / 2 - gap / 2;
-                    areaHeight = availableHeight;
-                    iconX = previewOffsetX + padding + areaWidth / 2;
-                    iconY = previewOffsetY + padding + availableHeight / 2;
-                } else {
-                    // 右側の画像
-                    const rightHeight = (availableHeight - gap) / 2;
-                    areaWidth = availableWidth / 2 - gap / 2;
-                    areaHeight = rightHeight;
-                    iconX = previewOffsetX + padding + availableWidth / 2 + gap / 2 + areaWidth / 2;
-                    iconY = previewOffsetY + padding + (imageIndex === 1 ? rightHeight / 2 : rightHeight + gap + rightHeight / 2);
-                }
-            } else if (currentLayout.type === '2-left-1-right') {
-                if (imageIndex < 2) {
-                    // 左側の画像
-                    const leftHeight = (availableHeight - gap) / 2;
-                    areaWidth = availableWidth / 2 - gap / 2;
-                    areaHeight = leftHeight;
-                    iconX = previewOffsetX + padding + areaWidth / 2;
-                    iconY = previewOffsetY + padding + (imageIndex === 0 ? leftHeight / 2 : leftHeight + gap + leftHeight / 2);
-                } else {
-                    // 右側の画像
-                    areaWidth = availableWidth / 2 - gap / 2;
-                    areaHeight = availableHeight;
-                    iconX = previewOffsetX + padding + availableWidth / 2 + gap / 2 + areaWidth / 2;
-                    iconY = previewOffsetY + padding + availableHeight / 2;
-                }
-            }
-        }
-        
-        // 入れ替えアイコン要素の作成
+        // 入れ替えアイコンを作成
         swapIconElement = document.createElement('div');
         swapIconElement.id = 'swapIcon';
-        swapIconElement.className = 'swap-icon';
         swapIconElement.innerHTML = '<i class="fas fa-exchange-alt"></i>';
-        swapIconElement.style.position = 'absolute';
-        swapIconElement.style.left = `${iconX - 35}px`; // 左側に配置
-        swapIconElement.style.top = `${iconY - 15}px`; // アイコンサイズの半分をオフセット
         swapIconElement.style.width = '30px';
         swapIconElement.style.height = '30px';
-        swapIconElement.style.backgroundColor = 'rgba(52, 152, 219, 0.8)';
         swapIconElement.style.color = 'white';
-        swapIconElement.style.borderRadius = '50%';
         swapIconElement.style.display = 'flex';
         swapIconElement.style.justifyContent = 'center';
         swapIconElement.style.alignItems = 'center';
         swapIconElement.style.cursor = 'pointer';
-        swapIconElement.style.zIndex = '10';
+        swapIconElement.style.margin = '0 3px';
         
-        // アイコンのクリックイベント
-        swapIconElement.addEventListener('click', (e) => {
-            e.stopPropagation(); // イベントの伝播を停止
-            
-            // 入れ替えモード状態のトグル
-            isSwapMode = !isSwapMode;
-            
-            if (isSwapMode) {
-                showToast('Please select the image you want to swap.');
-                swapIconElement.style.backgroundColor = 'rgba(231, 76, 60, 0.8)'; // 赤っぽい色に変更
-            } else {
-                resetSelection();
-            }
-        });
-        
-        // 位置調整アイコン要素の作成
+        // 位置調整アイコンを作成
         positionAdjustElement = document.createElement('div');
         positionAdjustElement.id = 'positionAdjustIcon';
-        positionAdjustElement.className = 'position-adjust-icon';
         positionAdjustElement.innerHTML = '<i class="fas fa-arrows-alt"></i>';
-        positionAdjustElement.style.position = 'absolute';
-        positionAdjustElement.style.left = `${iconX + 5}px`; // 右側に配置
-        positionAdjustElement.style.top = `${iconY - 15}px`; // アイコンサイズの半分をオフセット
         positionAdjustElement.style.width = '30px';
         positionAdjustElement.style.height = '30px';
-        positionAdjustElement.style.backgroundColor = 'rgba(46, 204, 113, 0.8)'; // 緑色
         positionAdjustElement.style.color = 'white';
-        positionAdjustElement.style.borderRadius = '50%';
         positionAdjustElement.style.display = 'flex';
         positionAdjustElement.style.justifyContent = 'center';
         positionAdjustElement.style.alignItems = 'center';
         positionAdjustElement.style.cursor = 'pointer';
-        positionAdjustElement.style.zIndex = '10';
+        positionAdjustElement.style.margin = '0 3px';
+        
+        // 入れ替えアイコンのクリックイベント
+        swapIconElement.addEventListener('click', (e) => {
+            e.stopPropagation(); // イベントの伝播を停止
+            
+            // 入れ替えモードのトグル
+            isSwapMode = !isSwapMode;
+            
+            if (isSwapMode) {
+                // 入れ替えモードがアクティブになったら
+                showToast('Click another image to swap positions');
+                
+                // 位置調整モードがアクティブだった場合はオフにする
+                if (isAdjustMode) {
+                    isAdjustMode = false;
+                    
+                    // ハイライト枠を通常の青色に戻す
+                    if (highlightElement) {
+                        highlightElement.style.border = '3px solid #3498db';
+                    }
+                    
+                    removePositionAdjustEventListeners();
+                    removeAdjustOverlay();
+                }
+            } else {
+                // 入れ替えモードが非アクティブになったら
+            }
+        });
         
         // 位置調整アイコンのクリックイベント
         positionAdjustElement.addEventListener('click', (e) => {
             e.stopPropagation(); // イベントの伝播を停止
             
-            // 実装は後日するので、今はメッセージを表示するだけ
-            showToast('位置調整機能は準備中です');
+            // 位置調整モード状態のトグル
+            isAdjustMode = !isAdjustMode;
+            
+            if (isAdjustMode) {
+                // 位置調整モードがアクティブになったら
+                showToast('Drag to adjust image position');
+                
+                // 入れ替えモードはオフにする
+                isSwapMode = false;
+                
+                // 現在の画像のオフセットを取得または初期化
+                if (!imagePositionOffsets[selectedImageIndex]) {
+                    imagePositionOffsets[selectedImageIndex] = { x: 0, y: 0 };
+                }
+                
+                // 現在のオフセットを保存
+                currentOffsetX = imagePositionOffsets[selectedImageIndex].x;
+                currentOffsetY = imagePositionOffsets[selectedImageIndex].y;
+                
+                // ドラッグイベントリスナーを設定
+                setupPositionAdjustEventListeners();
+                
+                // 位置調整モード用の表示に更新
+                updateAdjustModeView();
+            } else {
+                
+                // ハイライト枠を削除（通常の青色枠に戻す）
+                if (highlightElement) {
+                    highlightElement.style.border = '3px solid #3498db';
+                }
+                
+                // ドラッグイベントリスナーを削除
+                removePositionAdjustEventListeners();
+                
+                // オーバーレイを削除
+                removeAdjustOverlay();
+                
+                // 位置調整モード終了を通知
+                showToast('Position adjustment mode ended');
+            }
         });
         
-        // mainPreviewではなく親要素に追加
-        previewContainer.appendChild(swapIconElement);
-        previewContainer.appendChild(positionAdjustElement);
+        // アイコンをコンテナに追加
+        iconContainer.appendChild(swapIconElement);
+        iconContainer.appendChild(positionAdjustElement);
+        
+        // コンテナをpreviewContainerに追加
+        previewContainer.appendChild(iconContainer);
         
         // スクロールイベントのリスナーを追加
         previewContainer.addEventListener('scroll', updateSwapIconPosition);
         window.addEventListener('resize', updateSwapIconPosition);
+        
+        // アイコン位置を更新
+        updateSwapIconPosition();
     }
     
-    // 入れ替えアイコンと位置調整アイコンの位置を更新
+    // 入れ替えアイコンの位置を更新
     function updateSwapIconPosition() {
-        if (!swapIconElement || selectedImageIndex === -1) return;
+        if (!swapIconElement || !positionAdjustElement || selectedImageIndex === -1) return;
+        
+        const iconContainer = document.getElementById('iconContainer');
+        if (!iconContainer) return;
         
         // メインプレビューの位置を取得
         const previewContainer = mainPreview.parentElement;
@@ -976,27 +993,16 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
-        // アイコン位置の更新
-        swapIconElement.style.left = `${iconX - 35}px`; // 左側に配置
-        swapIconElement.style.top = `${iconY - 15}px`; // アイコンサイズの半分をオフセット
-        
-        // 位置調整アイコン位置の更新
-        if (positionAdjustElement) {
-            positionAdjustElement.style.left = `${iconX + 5}px`; // 右側に配置
-            positionAdjustElement.style.top = `${iconY - 15}px`; // アイコンサイズの半分をオフセット
-        }
+        // アイコンコンテナの位置を更新
+        iconContainer.style.left = `${iconX - 35}px`;
+        iconContainer.style.top = `${iconY - 15}px`;
     }
     
     // 入れ替えアイコンと位置調整アイコンの削除
     function removeSwapIcon() {
-        const swapIcon = document.getElementById('swapIcon');
-        if (swapIcon) {
-            swapIcon.remove();
-        }
-        
-        const positionAdjustIcon = document.getElementById('positionAdjustIcon');
-        if (positionAdjustIcon) {
-            positionAdjustIcon.remove();
+        const iconContainer = document.getElementById('iconContainer');
+        if (iconContainer) {
+            iconContainer.remove();
         }
         
         // スクロールイベントのリスナーを削除
@@ -1284,8 +1290,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 const x = padding;
                 const y = padding + (index * (singleHeight + gap));
                 
+                // 位置オフセットの適用
+                const offset = imagePositionOffsets[index] || { x: 0, y: 0 };
+                
                 // 画像をクロップして描画
-                drawImageCovered(ctx, images[index], x, y, width, singleHeight);
+                drawImageCovered(ctx, images[index], x, y, width, singleHeight, offset);
             }
         });
     }
@@ -1305,8 +1314,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 const x = padding + (index * (singleWidth + gap));
                 const y = padding;
                 
+                // 位置オフセットの適用
+                const offset = imagePositionOffsets[index] || { x: 0, y: 0 };
+                
                 // 画像をクロップして描画
-                drawImageCovered(ctx, images[index], x, y, singleWidth, height);
+                drawImageCovered(ctx, images[index], x, y, singleWidth, height, offset);
             }
         });
     }
@@ -1364,10 +1376,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (layout.type === '2-left-1-right') {
                     if (index < 2) { // 左側の2枚
                         const leftHeight = (availableHeight - gap) / 2;
-                        imgX = padding;
-                        imgY = padding + (index === 0 ? 0 : leftHeight + gap);
-                        imgWidth = availableWidth / 2 - gap / 2;
-                        imgHeight = leftHeight;
+                        x = padding;
+                        y = padding + (index === 0 ? 0 : leftHeight + gap);
+                        width = (availableWidth - gap) / 2;
+                        height = leftHeight;
                     } else { // 右側の大きい画像
                         x = padding + (availableWidth + gap) / 2;
                         y = padding;
@@ -1376,14 +1388,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
                 
+                // 位置オフセットの適用
+                const offset = imagePositionOffsets[index] || { x: 0, y: 0 };
+                
                 // 画像をクロップして描画
-                drawImageCovered(ctx, images[index], x, y, width, height);
+                drawImageCovered(ctx, images[index], x, y, width, height, offset);
             }
         });
     }
 
     // object-fit: cover と同様に画像を描画する関数
-    function drawImageCovered(ctx, img, x, y, width, height) {
+    function drawImageCovered(ctx, img, x, y, width, height, offset = { x: 0, y: 0 }) {
         const imgRatio = img.width / img.height;
         const boxRatio = width / height;
         
@@ -1392,14 +1407,20 @@ document.addEventListener('DOMContentLoaded', () => {
         if (imgRatio > boxRatio) { // 画像が横長の場合
             sh = img.height;
             sw = sh * boxRatio;
-            sy = 0;
-            sx = (img.width - sw) / 2;
+            // 位置オフセットを適用（横方向）
+            sx = (img.width - sw) / 2 + (offset.x / 100) * (img.width - sw);
+            sy = 0 + (offset.y / 100) * (img.height - sh);
         } else { // 画像が縦長の場合
             sw = img.width;
             sh = sw / boxRatio;
-            sx = 0;
-            sy = (img.height - sh) / 2;
+            // 位置オフセットを適用（縦方向）
+            sx = 0 + (offset.x / 100) * (img.width - sw);
+            sy = (img.height - sh) / 2 + (offset.y / 100) * (img.height - sh);
         }
+        
+        // オフセット値が画像の範囲内に収まるように制限
+        sx = Math.max(0, Math.min(sx, img.width - sw));
+        sy = Math.max(0, Math.min(sy, img.height - sh));
         
         // 角丸の半径
         const cornerRadius = parseInt(cornerRadiusControl.value);
@@ -1446,14 +1467,33 @@ document.addEventListener('DOMContentLoaded', () => {
     bgColorControl.addEventListener('input', updateCollage);
 
     function updateCollage() {
-        if (currentLayout) {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            drawLayout(canvas, ctx, currentLayout);
-            mainPreview.src = canvas.toDataURL();
-            
-            // パラメータ変更時はレイアウトオプションの再描画を行わない
+        // レイアウト情報が存在しない場合や画像が選択されていない場合は何もしない
+        if (!currentLayout || images.length === 0) {
+            mainPreview.style.display = 'none';
+            return;
         }
+        
+        // キャンバスのクリア
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // 描画処理を行う
+        drawLayout(canvas, ctx, currentLayout);
+        
+        mainPreview.src = canvas.toDataURL();
+        mainPreview.style.display = 'block';
+        
+        // 位置調整中は選択状態を維持
+        if (selectedImageIndex !== -1) {
+            highlightSelectedImage(selectedImageIndex);
+            showSwapIcon(selectedImageIndex);
+
+            // 位置調整モード中は枠線の色を維持
+            if (isAdjustMode && highlightElement) {
+                highlightElement.style.borderColor = 'rgb(231, 76, 60)'; // 赤色を維持
+            }
+        }
+        
         resetZoom();
     }
 
@@ -1636,17 +1676,26 @@ document.addEventListener('DOMContentLoaded', () => {
         
         let sw, sh, sx, sy;
         
+        // 位置オフセットの適用
+        const offset = imagePositionOffsets[images.indexOf(img)] || { x: 0, y: 0 };
+        
         if (imgRatio > boxRatio) { // 画像が横長の場合
             sh = img.height;
             sw = sh * boxRatio;
-            sy = 0;
-            sx = (img.width - sw) / 2;
+            // 位置オフセットを適用（横方向）
+            sx = (img.width - sw) / 2 + (offset.x / 100) * (img.width - sw);
+            sy = 0 + (offset.y / 100) * (img.height - sh);
         } else { // 画像が縦長の場合
             sw = img.width;
             sh = sw / boxRatio;
-            sx = 0;
-            sy = (img.height - sh) / 2;
+            // 位置オフセットを適用（縦方向）
+            sx = 0 + (offset.x / 100) * (img.width - sw);
+            sy = (img.height - sh) / 2 + (offset.y / 100) * (img.height - sh);
         }
+        
+        // オフセット値が画像の範囲内に収まるように制限
+        sx = Math.max(0, Math.min(sx, img.width - sw));
+        sy = Math.max(0, Math.min(sy, img.height - sh));
         
         if (cornerRadius > 0) {
             // 角丸のある矩形パスを作成
@@ -1944,5 +1993,176 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         return layouts;
+    }
+
+    // 位置調整モードのイベントリスナーを設定
+    function setupPositionAdjustEventListeners() {
+        // マウスイベント - プレビュー画像に直接イベントを追加
+        mainPreview.addEventListener('mousedown', handleDragStart, { passive: false });
+        document.addEventListener('mousemove', handleDragMove, { passive: false });
+        document.addEventListener('mouseup', handleDragEnd);
+        
+        // タッチイベント（モバイル対応）
+        mainPreview.addEventListener('touchstart', handleDragStart, { passive: false });
+        document.addEventListener('touchmove', handleDragMove, { passive: false });
+        document.addEventListener('touchend', handleDragEnd);
+    }
+
+    // 位置調整モードのイベントリスナーを削除
+    function removePositionAdjustEventListeners() {
+        // マウスイベント
+        mainPreview.removeEventListener('mousedown', handleDragStart);
+        document.removeEventListener('mousemove', handleDragMove);
+        document.removeEventListener('mouseup', handleDragEnd);
+        
+        // タッチイベント
+        mainPreview.removeEventListener('touchstart', handleDragStart);
+        document.removeEventListener('touchmove', handleDragMove);
+        document.removeEventListener('touchend', handleDragEnd);
+    }
+
+    // ドラッグ開始時の処理
+    function handleDragStart(e) {
+        e.preventDefault(); // デフォルト動作を防止
+        
+        // 位置調整モードがアクティブでない場合は何もしない
+        if (!isAdjustMode || selectedImageIndex === -1) return;
+
+        // ドラッグ開始フラグをセット
+        isDragging = true;
+        
+        // タッチイベントかマウスイベントかを判断
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        
+        // ドラッグ開始位置を記録
+        dragStartX = clientX;
+        dragStartY = clientY;
+        
+        // 現在のオフセットを取得または初期化
+        if (!imagePositionOffsets[selectedImageIndex]) {
+            imagePositionOffsets[selectedImageIndex] = { x: 0, y: 0 };
+        }
+        
+        // 現在のオフセットを記録
+        currentOffsetX = imagePositionOffsets[selectedImageIndex].x;
+        currentOffsetY = imagePositionOffsets[selectedImageIndex].y;
+    }
+    
+    // ドラッグ中処理
+    function handleDragMove(e) {
+        // ドラッグ中でなければ何もしない
+        if (!isDragging) return;
+        
+        e.preventDefault(); // デフォルト動作を防止（スクロールなど）
+        
+        // タッチイベントかマウスイベントかを判断
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        
+        // ドラッグ開始位置からの移動量を計算
+        const deltaX = clientX - dragStartX;
+        const deltaY = clientY - dragStartY;
+        
+        // 移動量を画像オフセットに変換（反対方向に動かす）
+        // 感度を調整するための係数 - 値が小さいほど敏感になる
+        const sensitivity = 50; // この値は調整可能
+        
+        // 新しいオフセットを計算（範囲制限も適用）
+        const newOffsetX = Math.max(-100, Math.min(100, currentOffsetX - deltaX / sensitivity * 100));
+        const newOffsetY = Math.max(-100, Math.min(100, currentOffsetY - deltaY / sensitivity * 100));
+        
+        // オフセットを適用
+        imagePositionOffsets[selectedImageIndex] = {
+            x: newOffsetX,
+            y: newOffsetY
+        };
+        
+        // コラージュを更新
+        updateCollage();
+    }
+
+    // ドラッグ終了時の処理
+    function handleDragEnd(e) {
+        // ドラッグ中でなければ何もしない
+        if (!isDragging) return;
+        
+        // ドラッグ終了フラグをリセット
+        isDragging = false;
+        
+        // 最終的なオフセットを記録（位置調整モードは継続）
+        if (selectedImageIndex !== -1) {
+            currentOffsetX = imagePositionOffsets[selectedImageIndex].x;
+            currentOffsetY = imagePositionOffsets[selectedImageIndex].y;
+            
+            // 変更があったことをユーザーに通知
+            showToast('Image position adjusted');
+        }
+
+        // ドラッグ操作終了後もモードは継続（位置調整アイコンをクリックするまで）
+    }
+
+    // 位置調整モードの表示を更新する関数
+    function updateAdjustModeView() {
+        // 選択画像のハイライト枠を赤色に変更
+        if (highlightElement) {
+            highlightElement.style.border = '3px solid #e74c3c';
+        } else {
+            // ハイライトがなければ作成
+            highlightSelectedImage(selectedImageIndex);
+            if (highlightElement) {
+                highlightElement.style.border = '3px solid #e74c3c';
+            }
+        }
+        
+        // オーバーレイを作成して表示
+        createAdjustOverlay();
+    }
+    
+    // 位置調整モード用のオーバーレイを作成
+    function createAdjustOverlay() {
+        // 既存のオーバーレイを削除
+        removeAdjustOverlay();
+        
+        if (!isAdjustMode || selectedImageIndex === -1) return;
+        
+        const previewContainer = mainPreview.parentElement;
+        
+        // プレビュー要素の位置情報を取得
+        const previewRect = mainPreview.getBoundingClientRect();
+        const containerRect = previewContainer.getBoundingClientRect();
+        const previewOffsetX = previewRect.left - containerRect.left;
+        const previewOffsetY = previewRect.top - containerRect.top;
+        
+        // オーバーレイ要素の作成
+        adjustOverlayElement = document.createElement('div');
+        adjustOverlayElement.id = 'adjustModeOverlay';
+        adjustOverlayElement.style.position = 'absolute';
+        adjustOverlayElement.style.left = `${previewOffsetX}px`;
+        adjustOverlayElement.style.top = `${previewOffsetY}px`;
+        adjustOverlayElement.style.width = `${mainPreview.width}px`;
+        adjustOverlayElement.style.height = `${mainPreview.height}px`;
+        adjustOverlayElement.style.backgroundColor = 'rgba(0, 0, 0, 0.6)'; // 半透明の黒
+        adjustOverlayElement.style.zIndex = '4'; // ハイライト要素より下
+        adjustOverlayElement.style.pointerEvents = 'none'; // マウスイベントを通過させる
+        
+        // オーバーレイを適用
+        previewContainer.appendChild(adjustOverlayElement);
+        mainPreview.style.zIndex = '3'; // メインプレビューがオーバーレイに隠れないようにする
+    }
+    
+    // 位置調整モード用のオーバーレイを削除
+    function removeAdjustOverlay() {
+        // オーバーレイ要素が存在すれば削除
+        if (adjustOverlayElement) {
+            adjustOverlayElement.remove();
+            adjustOverlayElement = null;
+        }
+        
+        // 他のオーバーレイも念のため削除
+        const overlay = document.getElementById('adjustModeOverlay');
+        if (overlay) {
+            overlay.remove();
+        }
     }
 });
