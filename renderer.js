@@ -715,8 +715,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     highlightHeight = leftHeight;
                 } else {
                     // 右側の画像
-                    highlightX = padding + availableWidth / 2 + gap / 2;
-                    highlightY = padding;
+                    highlightX = previewOffsetX + padding + availableWidth / 2 + gap / 2;
+                    highlightY = previewOffsetY + padding;
                     highlightWidth = availableWidth / 2 - gap / 2;
                     highlightHeight = availableHeight;
                 }
@@ -983,12 +983,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (imageIndex < 2) {
                     // 左側の画像
                     const leftHeight = (availableHeight - gap) / 2;
-                    iconX = previewOffsetX + padding + (availableWidth / 2 - gap / 2) / 2;
-                    iconY = previewOffsetY + padding + (imageIndex === 0 ? leftHeight / 2 : leftHeight + gap + leftHeight / 2);
+                    highlightX = previewOffsetX + padding;
+                    highlightY = previewOffsetY + padding + (imageIndex === 0 ? 0 : leftHeight + gap);
+                    highlightWidth = availableWidth / 2 - gap / 2;
+                    highlightHeight = leftHeight;
                 } else {
                     // 右側の画像
-                    iconX = previewOffsetX + padding + availableWidth / 2 + gap / 2 + (availableWidth / 2 - gap / 2) / 2;
-                    iconY = previewOffsetY + padding + availableHeight / 2;
+                    highlightX = previewOffsetX + padding + availableWidth / 2 + gap / 2;
+                    highlightY = previewOffsetY + padding;
+                    highlightWidth = availableWidth / 2 - gap / 2;
+                    highlightHeight = availableHeight;
                 }
             }
         }
