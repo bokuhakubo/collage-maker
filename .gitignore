@@ -46,3 +46,6 @@ debug.log
 
 #docs
 docs/
+
+#icon
+*.iconset/

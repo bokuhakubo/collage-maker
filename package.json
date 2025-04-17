@@ -1,14 +1,17 @@
 {
   "name": "collage-maker",
   "version": "1.0.0",
-  "description": "写真コラージュ作成ツール",
+  "description": "最大3枚の画像をアップロードし、直感的な操作で美しいコラージュを簡単に作成できるデスクトップアプリ",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
-    "build": "electron-builder"
+    "build": "electron-builder",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build:linux": "electron-builder --linux"
   },
-  "author": "",
+  "author": "Naoto",
   "license": "MIT",
   "devDependencies": {
     "electron": "^28.0.0",
@@ -18,10 +21,40 @@
     "electron-store": "^8.1.0"
   },
   "build": {
-    "appId": "com.yourname.collage-maker",
+    "appId": "com.naoto.collage-maker",
     "productName": "Collage Maker",
+    "copyright": "Copyright © 2025 Naoto",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
     "mac": {
-      "category": "public.app-category.graphics-design"
-    }
+      "category": "public.app-category.graphics-design",
+      "icon": "build/icon.icns",
+      "target": ["dmg", "zip"],
+      "darkModeSupport": true
+    },
+    "dmg": {
+      "background": "build/background.png",
+      "icon": "build/icon.icns",
+      "iconSize": 100,
+      "window": {
+        "width": 540,
+        "height": 380
+      }
+    },
+    "win": {
+      "target": ["nsis", "portable"],
+      "icon": "build/icon.ico"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Graphics"
+    },
+    "publish": null
   }
-} 
+}
