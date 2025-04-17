@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Collage Maker</title>
+  <link rel="stylesheet" href="styles.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <main class="app-content">
+      <!-- Left column: Image upload section -->
+      <div class="column upload-column">
+        <button id="upload-btn" class="round-btn light-btn">Select Images</button>
+        <div id="selected-images" class="image-grid">
+          <!-- Selected images will be displayed here -->
+          <div class="placeholder-message">
+            Upload images (maximum 3)
+          </div>
+        </div>
+      </div>
+      
+      <!-- Middle column: Collage section -->
+      <div class="column collage-column">
+        <div id="collage-preview" class="collage-preview">
+          <!-- Collage preview will be displayed here -->
+        </div>
+        <div class="layout-template-section">
+          <div class="layout-templates">
+            <!-- 1枚用レイアウト -->
+            <div class="layout-group" data-image-count="1">
+              <div class="layout-item" data-layout="single_center">
+                <div class="layout-preview single-center-preview"></div>
+              </div>
+            </div>
+            
+            <!-- 2枚用レイアウト -->
+            <div class="layout-group" data-image-count="2">
+              <div class="layout-item" data-layout="two_vertical">
+                <div class="layout-preview two-vertical-preview"></div>
+              </div>
+              <div class="layout-item" data-layout="two_horizontal">
+                <div class="layout-preview two-horizontal-preview"></div>
+              </div>
+            </div>
+            
+            <!-- 3枚用レイアウト -->
+            <div class="layout-group" data-image-count="3">
+              <div class="layout-item" data-layout="three_vertical">
+                <div class="layout-preview three-vertical-preview">
+                  <div></div>
+                </div>
+              </div>
+              <div class="layout-item" data-layout="three_horizontal">
+                <div class="layout-preview three-horizontal-preview">
+                  <div></div>
+                </div>
+              </div>
+              <div class="layout-item" data-layout="top1_bottom2">
+                <div class="layout-preview top1-bottom2-preview">
+                  <div></div>
+                </div>
+              </div>
+              <div class="layout-item" data-layout="top2_bottom1">
+                <div class="layout-preview top2-bottom1-preview">
+                  <div></div>
+                </div>
+              </div>
+              <div class="layout-item" data-layout="left1_right2">
+                <div class="layout-preview left1-right2-preview">
+                  <div></div>
+                </div>
+              </div>
+              <div class="layout-item" data-layout="left2_right1">
+                <div class="layout-preview left2-right1-preview">
+                  <div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Right column: Canvas settings section -->
+      <div class="column settings-column">
+        <div class="settings-group">
+          <h3>Ratio / Size</h3>
+          <div class="ratio-options">
+            <div class="ratio-group">
+              <div class="ratio-btn-group">
+                <button class="ratio-btn active" data-ratio="1:1">1:1</button>
+                <button class="ratio-btn" data-ratio="4:3">4:3</button>
+                <button class="ratio-btn" data-ratio="3:2">3:2</button>
+                <button class="ratio-btn" data-ratio="16:9">16:9</button>
+                <button class="ratio-btn" data-ratio="custom">Custom</button>
+              </div>
+            </div>
+            
+            <div id="custom-size" class="custom-size-inputs">
+              <div class="dimension-input">
+                <label for="width">Width (px)</label>
+                <input type="number" id="width" min="100" max="4000" value="1080">
+              </div>
+              <div class="dimension-input">
+                <label for="height">Height (px)</label>
+                <input type="number" id="height" min="100" max="4000" value="1080">
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="settings-group">
+          <h3>Canvas Padding</h3>
+          <div class="slider-with-value">
+            <input type="range" id="canvas-padding" min="0" max="50" value="10">
+            <input type="number" id="canvas-padding-value" min="0" max="50" value="10">
+          </div>
+        </div>
+        
+        <div class="settings-group">
+          <h3>Photo Spacing</h3>
+          <div class="slider-with-value">
+            <input type="range" id="photo-spacing" min="0" max="50" value="10">
+            <input type="number" id="photo-spacing-value" min="0" max="50" value="10">
+          </div>
+        </div>
+        
+        <div class="settings-group">
+          <h3>Round Corners</h3>
+          <div class="slider-with-value">
+            <input type="range" id="round-corners" min="0" max="50" value="0">
+            <input type="number" id="round-corners-value" min="0" max="50" value="0">
+          </div>
+        </div>
+        
+        <div class="settings-group">
+          <h3>Background Color</h3>
+          <div class="color-options">
+            <button class="color-btn" data-color="#FFFFFF"></button>
+            <button class="color-btn" data-color="#000000"></button>
+            <button class="color-btn" data-color="#808080"></button>
+            <button class="color-btn" data-color="#D3D3D3"></button>
+          </div>
+        </div>
+        
+        <div class="action-buttons">
+          <button id="clear-btn" class="round-btn dark-btn">Clear</button>
+          <button id="save-btn" class="round-btn light-btn">Save Collage</button>
+        </div>
+      </div>
+    </main>
+  </div>
+  
+  <script src="renderer.js"></script>
+</body>
+</html> 

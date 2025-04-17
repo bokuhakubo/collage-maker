@@ -1,0 +1,27 @@
+{
+  "name": "collage-maker",
+  "version": "1.0.0",
+  "description": "写真コラージュ作成ツール",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder"
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.6.3"
+  },
+  "dependencies": {
+    "electron-store": "^8.1.0"
+  },
+  "build": {
+    "appId": "com.yourname.collage-maker",
+    "productName": "Collage Maker",
+    "mac": {
+      "category": "public.app-category.graphics-design"
+    }
+  }
+} 
