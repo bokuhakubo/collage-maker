@@ -39,13 +39,7 @@
       "darkModeSupport": true
     },
     "dmg": {
-      "background": "build/background.png",
-      "icon": "build/icon.icns",
-      "iconSize": 100,
-      "window": {
-        "width": 540,
-        "height": 380
-      }
+      "background": null
     },
     "win": {
       "target": ["nsis", "portable"],
